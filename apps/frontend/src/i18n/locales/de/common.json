@@ -363,5 +363,6 @@
   "navStyle": {
     "sidebar": "Seitenleiste",
     "floating": "Schwebeleiste"
-  }
+  },
+  "allocation_other_in_category": "Andere {{category}}"
 }

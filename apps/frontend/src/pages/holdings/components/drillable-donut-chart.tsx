@@ -1,5 +1,6 @@
 import { AllocationBreadcrumb } from "@/components/allocation-breadcrumb";
 import { useDrillDownState } from "@/hooks/use-drill-down-state";
+import { namedChildren } from "@/lib/allocation-children";
 import type { TaxonomyAllocation, CategoryAllocation } from "@/lib/types";
 import {
   Card,
@@ -68,7 +69,9 @@ export function DrillableDonutChart({
 
     if (!category?.children?.length) return [];
 
-    return category.children
+    return namedChildren(category, (name) =>
+      t("common:allocation_other_in_category", { category: name }),
+    )
       .filter((child) => child.value > 0)
       .map((child) => ({
         id: child.categoryId,
@@ -78,7 +81,7 @@ export function DrillableDonutChart({
         color: child.color,
       }))
       .sort((a, b) => b.value - a.value);
-  }, [path, allocation, baseCurrency]);
+  }, [path, allocation, baseCurrency, t]);
 
   const data = isAtRoot ? rootData : drilledData;
 

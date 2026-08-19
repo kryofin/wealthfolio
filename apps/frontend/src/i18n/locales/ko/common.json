@@ -354,5 +354,6 @@
   "navStyle": {
     "sidebar": "사이드바",
     "floating": "플로팅 바"
-  }
+  },
+  "allocation_other_in_category": "기타 {{category}}"
 }
