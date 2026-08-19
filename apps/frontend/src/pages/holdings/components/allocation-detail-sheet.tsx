@@ -15,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { getHoldingsByAllocation } from "@/adapters";
+import { namedChildren } from "@/lib/allocation-children";
 import { TickerAvatar } from "@/components/ticker-avatar";
 import { HoldingType } from "@/lib/constants";
 import type {
@@ -53,6 +54,11 @@ export function AllocationDetailSheet({
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
 
+  const residualName = useCallback(
+    (categoryName: string) => t("common:allocation_other_in_category", { category: categoryName }),
+    [t],
+  );
+
   // Set initial category when sheet opens
   useEffect(() => {
     if (isOpen && allocation?.categories?.length) {
@@ -64,7 +70,9 @@ export function AllocationDetailSheet({
       // If not a top-level, search children to find the parent
       if (!category && categoryId) {
         for (const parent of allocation.categories) {
-          childMatch = parent.children?.find((child) => child.categoryId === categoryId);
+          childMatch = namedChildren(parent, residualName).find(
+            (child) => child.categoryId === categoryId,
+          );
           if (childMatch) {
             category = parent;
             break;
@@ -90,7 +98,7 @@ export function AllocationDetailSheet({
         }
       }
     }
-  }, [isOpen, initialCategoryId, allocation?.categories]);
+  }, [isOpen, initialCategoryId, allocation?.categories, residualName]);
 
   const taxonomyId = allocation?.taxonomyId ?? "";
   const categoryId = selectedCategoryId ?? "";
@@ -282,7 +290,7 @@ export function AllocationDetailSheet({
                           <div
                             className={`bg-muted/30 ${!(isLast && isExpanded) ? "border-t" : ""}`}
                           >
-                            {category.children!.map((child, childIdx) => {
+                            {namedChildren(category, residualName).map((child, childIdx) => {
                               const isChildSelected = selectedCategoryId === child.categoryId;
 
                               return (

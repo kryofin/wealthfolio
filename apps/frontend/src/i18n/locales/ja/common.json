@@ -354,5 +354,6 @@
   "navStyle": {
     "sidebar": "サイドバー",
     "floating": "フローティングバー"
-  }
+  },
+  "allocation_other_in_category": "その他の{{category}}"
 }
