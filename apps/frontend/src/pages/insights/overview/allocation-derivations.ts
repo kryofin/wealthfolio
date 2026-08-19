@@ -5,6 +5,7 @@ import type {
   CurrentValuationSummary,
   Holding,
 } from "@/lib/types";
+import { namedChildren } from "@/lib/allocation-children";
 import type { FormattingApi } from "@wealthfolio/ui";
 
 /** Cycling palette built from the theme chart tokens (retargeted to the allocation palette). */
@@ -218,10 +219,12 @@ export interface BreakdownNode {
 /**
  * Build a colored breakdown tree from a taxonomy's categories. Top-level nodes get distinct
  * theme chart colors; descendants inherit their parent's color so each branch reads as one family.
+ * `residualName` labels the unassigned remainder of a category (see `withResidualChild`).
  */
 export function buildBreakdownTree(
   categories: CategoryAllocation[] | undefined,
   total: number,
+  residualName: (categoryName: string) => string,
   depth = 0,
   inheritedColor?: string,
 ): BreakdownNode[] {
@@ -231,6 +234,7 @@ export function buildBreakdownTree(
     .sort((a, b) => b.value - a.value)
     .map((c, index) => {
       const color = depth === 0 ? paletteColor(index) : (inheritedColor ?? paletteColor(index));
+      const children = namedChildren(c, residualName);
       return {
         id: c.categoryId,
         name: c.categoryName,
@@ -238,8 +242,8 @@ export function buildBreakdownTree(
         percentage: total > 0 ? (c.value / total) * 100 : 0,
         color,
         depth,
-        children: c.children?.length
-          ? buildBreakdownTree(c.children, total, depth + 1, color)
+        children: children.length
+          ? buildBreakdownTree(children, total, residualName, depth + 1, color)
           : undefined,
       };
     });

@@ -354,5 +354,6 @@
   "navStyle": {
     "sidebar": "侧边栏",
     "floating": "浮动栏"
-  }
+  },
+  "allocation_other_in_category": "其他{{category}}"
 }
