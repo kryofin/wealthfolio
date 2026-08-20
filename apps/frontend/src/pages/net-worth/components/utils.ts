@@ -136,6 +136,12 @@ export interface Change {
   amount: number;
   /** Ratio (0.145 = 14.5%), or null when the range starts with no usable baseline. */
   percent: number | null;
+  /**
+   * The row had no usable baseline but ends holding a real value, so it was added
+   * during the range. Derived from the raw series rather than `amount`, because
+   * liability amounts are sign-inverted and a new debt yields a negative amount.
+   */
+  isNew: boolean;
 }
 
 /**
@@ -154,12 +160,17 @@ const MULTIPLE_THRESHOLD = 10;
  * magnitudes, so a reduction is expressed as a positive (good) change.
  */
 export function deriveChange(series: number[], isLiability: boolean): Change {
-  if (series.length < 2) return { amount: 0, percent: 0 };
+  if (series.length < 2) return { amount: 0, percent: 0, isNew: false };
   const first = series[0];
   const last = series[series.length - 1];
   const amount = isLiability ? first - last : last - first;
   const base = Math.abs(first);
-  return { amount, percent: base >= BASELINE_FLOOR ? amount / base : null };
+  const hasBaseline = base >= BASELINE_FLOOR;
+  return {
+    amount,
+    percent: hasBaseline ? amount / base : null,
+    isNew: !hasBaseline && Math.abs(last) >= BASELINE_FLOOR,
+  };
 }
 
 /** True when the ratio is small enough to read as a plain percentage. */
@@ -177,7 +188,7 @@ export function formatChangePercent(
   newLabel: string,
   formatting: Pick<FormattingApi, "formatPercent" | "formatDecimal">,
 ): string {
-  if (change.percent === null) return change.amount > 0 ? newLabel : "—";
+  if (change.percent === null) return change.isNew ? newLabel : "—";
   const abs = Math.abs(change.percent);
   if (abs >= MULTIPLE_THRESHOLD) {
     const multiple = formatting.formatDecimal(1 + abs, {
