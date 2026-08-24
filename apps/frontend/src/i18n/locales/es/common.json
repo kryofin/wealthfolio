@@ -364,5 +364,5 @@
     "sidebar": "Barra lateral",
     "floating": "Barra flotante"
   },
-  "allocation_other_in_category": "Otro {{category}}"
+  "allocation_other_in_category": "Otros ({{category}})"
 }

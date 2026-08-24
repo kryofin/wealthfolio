@@ -364,5 +364,5 @@
     "sidebar": "Seitenleiste",
     "floating": "Schwebeleiste"
   },
-  "allocation_other_in_category": "Andere {{category}}"
+  "allocation_other_in_category": "Sonstige ({{category}})"
 }

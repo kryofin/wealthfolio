@@ -15,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { getHoldingsByAllocation } from "@/adapters";
-import { namedChildren } from "@/lib/allocation-children";
+import { namedChild, namedChildren } from "@/lib/allocation-children";
 import { TickerAvatar } from "@/components/ticker-avatar";
 import { HoldingType } from "@/lib/constants";
 import type {
@@ -70,10 +70,9 @@ export function AllocationDetailSheet({
       // If not a top-level, search children to find the parent
       if (!category && categoryId) {
         for (const parent of allocation.categories) {
-          childMatch = namedChildren(parent, residualName).find(
-            (child) => child.categoryId === categoryId,
-          );
-          if (childMatch) {
+          const match = parent.children?.find((child) => child.categoryId === categoryId);
+          if (match) {
+            childMatch = namedChild(parent, match, residualName);
             category = parent;
             break;
           }

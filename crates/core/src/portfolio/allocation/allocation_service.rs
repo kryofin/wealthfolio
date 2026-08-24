@@ -31,16 +31,16 @@ const RESIDUAL_TOLERANCE_BPS: i32 = 75;
 /// `source` written by auto-classification (`crates/core/src/assets/auto_classification.rs`).
 const AUTO_SOURCE: &str = "AUTO";
 
-/// Suffix marking the drill-down child that holds the part of a rolled-up category carrying no
-/// sub-category assignment (e.g. holdings classified as "Fixed Income" but no bond type). Without
-/// it a category's children silently understate their parent, and a UI dividing by the children it
-/// received reports the largest one as 100%. The id is `<parent id><suffix>`; consumers that need
-/// the parent strip the suffix. Callers render their own label — `category_name` is an English
-/// fallback for consumers that do not know the marker.
+/// Suffix on the id of the drill-down child that holds the part of a rolled-up category carrying
+/// no sub-category assignment (e.g. holdings classified as "Fixed Income" but no bond type).
+/// Without that child a category's children silently understate their parent, and a UI dividing by
+/// the children it received reports the largest one as 100%. The id is `<parent id><suffix>` so the
+/// holdings query can address exactly those holdings; to recognize such a child, read
+/// `CategoryAllocation::is_residual` rather than matching this suffix.
 pub const RESIDUAL_CATEGORY_SUFFIX: &str = ":__residual__";
 
-/// Residual shares below this fraction of the parent are rounding noise, not an unassigned
-/// remainder — weights are stored in basis points, so a real remainder is far larger.
+/// Residual shares below one basis point of the parent are rounding noise, not an unassigned
+/// remainder — weights are stored in basis points, so a real remainder is at least this large.
 const RESIDUAL_CHILD_MIN_SHARE: Decimal = dec!(0.0001);
 
 #[derive(Debug, Clone)]
@@ -621,16 +621,10 @@ impl AllocationService {
                             value: *value,
                             percentage,
                             children: Vec::new(),
+                            is_residual: false,
                         },
                     );
                 }
-            }
-            for children in children_map.values_mut() {
-                children.sort_by(|a, b| {
-                    b.value
-                        .cmp(&a.value)
-                        .then_with(|| a.category_id.cmp(&b.category_id))
-                });
             }
         }
 
@@ -663,6 +657,11 @@ impl AllocationService {
                     value,
                     total_value,
                 );
+                children.sort_by(|a, b| {
+                    b.value
+                        .cmp(&a.value)
+                        .then_with(|| a.category_id.cmp(&b.category_id))
+                });
 
                 CategoryAllocation {
                     category_id: cat_id,
@@ -671,6 +670,7 @@ impl AllocationService {
                     value,
                     percentage,
                     children,
+                    is_residual: false,
                 }
             })
             .collect();
@@ -705,7 +705,7 @@ impl AllocationService {
         }
         let assigned: Decimal = children.iter().map(|child| child.value).sum();
         let residual = value - assigned;
-        if residual <= value * RESIDUAL_CHILD_MIN_SHARE {
+        if residual < value * RESIDUAL_CHILD_MIN_SHARE {
             return;
         }
 
@@ -722,6 +722,7 @@ impl AllocationService {
             value: residual,
             percentage,
             children: Vec::new(),
+            is_residual: true,
         });
     }
 
@@ -2094,9 +2095,77 @@ mod tests {
         assert_eq!(residual.value, dec!(800));
         assert_eq!(residual.percentage, dec!(40));
         assert_eq!(residual.category_name, "Other FIXED_INCOME");
+        assert!(residual.is_residual);
+        assert!(!fixed_income.is_residual);
         // The whole point: children now account for the parent.
         let children_total: Decimal = fixed_income.children.iter().map(|c| c.value).sum();
         assert_eq!(children_total, fixed_income.value);
+    }
+
+    #[test]
+    fn residual_child_is_sorted_with_its_siblings() {
+        let svc = svc();
+        // The remainder (1800) outweighs the sub-classified holding (200).
+        let holdings = vec![
+            make_holding("MUNI", dec!(200)),
+            make_holding("TBILL", dec!(1800)),
+        ];
+        let categories = vec![
+            make_category_for_taxonomy("asset_classes", "FIXED_INCOME", None),
+            make_category_for_taxonomy("asset_classes", "FI_MUNICIPAL", Some("FIXED_INCOME")),
+        ];
+        let assignments: HashMap<String, Vec<AssetTaxonomyAssignment>> = HashMap::from([
+            (
+                "MUNI".to_string(),
+                vec![make_assignment(
+                    "MUNI",
+                    "asset_classes",
+                    "FI_MUNICIPAL",
+                    10000,
+                )],
+            ),
+            (
+                "TBILL".to_string(),
+                vec![make_assignment(
+                    "TBILL",
+                    "asset_classes",
+                    "FIXED_INCOME",
+                    10000,
+                )],
+            ),
+        ]);
+
+        let result = svc.aggregate_by_taxonomy(
+            &holdings,
+            "asset_classes",
+            "Asset Classes",
+            "#ccc",
+            &categories,
+            &assignments,
+            dec!(2000),
+            true,
+            &HashMap::new(),
+        );
+
+        let fixed_income = result
+            .categories
+            .iter()
+            .find(|c| c.category_id == "FIXED_INCOME")
+            .expect("Fixed Income category missing");
+
+        // Children stay ordered by value; consumers that don't re-sort render them as given.
+        let order: Vec<&str> = fixed_income
+            .children
+            .iter()
+            .map(|c| c.category_id.as_str())
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                format!("FIXED_INCOME{RESIDUAL_CATEGORY_SUFFIX}").as_str(),
+                "FI_MUNICIPAL"
+            ]
+        );
     }
 
     #[test]

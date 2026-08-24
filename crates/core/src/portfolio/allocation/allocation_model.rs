@@ -20,6 +20,11 @@ pub struct CategoryAllocation {
     /// Child category allocations (for drill-down). Only populated for rolled-up categories.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub children: Vec<CategoryAllocation>,
+    /// True for the synthetic child holding the part of a parent that carries no sub-category
+    /// assignment. Consumers should label it after its parent rather than trusting
+    /// `category_name`, which is an English fallback.
+    #[serde(default)]
+    pub is_residual: bool,
 }
 
 /// Allocation breakdown for a single taxonomy.

@@ -1,25 +1,23 @@
 import type { CategoryAllocation } from "@/lib/types";
 
-/** Mirrors `RESIDUAL_CATEGORY_SUFFIX` in `crates/core/src/portfolio/allocation/allocation_service.rs`. */
-const RESIDUAL_SUFFIX = ":__residual__";
-
 /**
- * A residual row holds the part of a category carrying no sub-category assignment (e.g. holdings
+ * A residual child holds the part of a category carrying no sub-category assignment (e.g. holdings
  * classified as "Fixed Income" but no bond type). The backend emits it so drill-downs always
- * account for their parent, naming it in English for consumers that don't know the marker.
+ * account for their parent, flagging it with `isResidual` and naming it in English for consumers
+ * that render the raw response.
  */
-export function isResidualCategoryId(categoryId: string): boolean {
-  return categoryId.endsWith(RESIDUAL_SUFFIX);
+export function namedChild(
+  parent: CategoryAllocation,
+  child: CategoryAllocation,
+  residualName: (categoryName: string) => string,
+): CategoryAllocation {
+  return child.isResidual ? { ...child, categoryName: residualName(parent.categoryName) } : child;
 }
 
 /** Drill-down children of a category, with any residual row renamed in the user's language. */
 export function namedChildren(
-  category: CategoryAllocation,
+  parent: CategoryAllocation,
   residualName: (categoryName: string) => string,
 ): CategoryAllocation[] {
-  return (category.children ?? []).map((child) =>
-    isResidualCategoryId(child.categoryId)
-      ? { ...child, categoryName: residualName(category.categoryName) }
-      : child,
-  );
+  return (parent.children ?? []).map((child) => namedChild(parent, child, residualName));
 }

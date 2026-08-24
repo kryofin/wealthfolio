@@ -529,6 +529,7 @@ mod tests {
             value,
             percentage: rust_decimal::Decimal::ZERO,
             children: vec![],
+            is_residual: false,
         }
     }
 

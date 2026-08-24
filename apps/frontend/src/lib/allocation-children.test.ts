@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CategoryAllocation } from "@/lib/types";
-import { isResidualCategoryId, namedChildren } from "./allocation-children";
+import { namedChildren } from "./allocation-children";
 
 const residualName = (name: string) => `Other ${name}`;
 
@@ -26,6 +26,7 @@ const fixedIncome: CategoryAllocation = {
       value: 800,
       percentage: 8,
       children: [],
+      isResidual: true,
     },
   ],
 };
@@ -46,13 +47,17 @@ describe("namedChildren", () => {
     expect(residual.categoryId).toBe("FIXED_INCOME:__residual__");
   });
 
+  it("leaves a child alone when the id looks residual but the flag is absent", () => {
+    const [child] = namedChildren(
+      { ...fixedIncome, children: [{ ...fixedIncome.children![1], isResidual: undefined }] },
+      () => "RENAMED",
+    );
+
+    expect(child.categoryName).toBe("Other Fixed Income");
+  });
+
   it("returns an empty list for a leaf category", () => {
     expect(namedChildren({ ...fixedIncome, children: [] }, residualName)).toEqual([]);
     expect(namedChildren({ ...fixedIncome, children: undefined }, residualName)).toEqual([]);
-  });
-
-  it("recognizes residual ids", () => {
-    expect(isResidualCategoryId("FIXED_INCOME:__residual__")).toBe(true);
-    expect(isResidualCategoryId("FI_MUNICIPAL")).toBe(false);
   });
 });
