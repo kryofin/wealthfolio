@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::NaiveDate;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
 use wealthfolio_core::accounts::account_types;
@@ -135,6 +136,36 @@ pub(crate) fn activity_abs_amount(activity: &Activity) -> Decimal {
 
 pub(crate) fn decimal_to_f64(amount: Decimal) -> f64 {
     amount.to_f64().unwrap_or(0.0)
+}
+
+/// Convert a native amount to the report's target currency at `as_of`.
+/// Mirrors `insight::service::fx_to_target` — same convention (one rate per
+/// report, snapshot-date style) so analytics and insight surfaces agree.
+/// Same-currency short-circuit; on FxService error, returns None so callers
+/// exclude the native amount instead of mixing currencies into the target total.
+pub(crate) fn fx_to_target(
+    fx: &dyn wealthfolio_core::fx::FxServiceTrait,
+    amount: Decimal,
+    from: &str,
+    to: &str,
+    as_of: NaiveDate,
+) -> Option<Decimal> {
+    if amount == Decimal::ZERO || from == to || from.is_empty() {
+        return Some(amount);
+    }
+    match fx.convert_currency_for_date(amount, from, to, as_of) {
+        Ok(converted) => Some(converted),
+        Err(e) => {
+            log::warn!(
+                "spending analytics FX conversion {}→{} on {} failed ({}); excluding native amount",
+                from,
+                to,
+                as_of,
+                e,
+            );
+            None
+        }
+    }
 }
 
 #[cfg(test)]
