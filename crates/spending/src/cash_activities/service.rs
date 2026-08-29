@@ -51,9 +51,11 @@ pub struct CashActivityService {
     splits: Arc<dyn ActivitySplitRepositoryTrait>,
     activity_events: Arc<dyn crate::activity_events::ActivityEventsRepositoryTrait>,
     events: Arc<EventsService>,
+    fx: Arc<dyn wealthfolio_core::fx::FxServiceTrait>,
 }
 
 impl CashActivityService {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         activity_repo: Arc<dyn ActivityRepositoryTrait>,
         account_repo: Arc<dyn AccountRepositoryTrait>,
@@ -62,6 +64,7 @@ impl CashActivityService {
         splits: Arc<dyn ActivitySplitRepositoryTrait>,
         activity_events: Arc<dyn crate::activity_events::ActivityEventsRepositoryTrait>,
         events: Arc<EventsService>,
+        fx: Arc<dyn wealthfolio_core::fx::FxServiceTrait>,
     ) -> Self {
         Self {
             activity_repo,
@@ -71,6 +74,7 @@ impl CashActivityService {
             splits,
             activity_events,
             events,
+            fx,
         }
     }
 
@@ -1038,6 +1042,95 @@ mod tests {
         }
     }
 
+    /// FX stub that multiplies cross-currency conversions by a fixed rate.
+    /// `passthrough_fx()` (rate 1) returns amounts unchanged. Local to this
+    /// module (the analytics tests' PassthroughFx is `pub(super)` there).
+    struct MockFx {
+        rate: Decimal,
+    }
+
+    fn passthrough_fx() -> Arc<MockFx> {
+        Arc::new(MockFx { rate: Decimal::ONE })
+    }
+
+    #[async_trait]
+    impl wealthfolio_core::fx::FxServiceTrait for MockFx {
+        fn initialize(&self) -> wealthfolio_core::Result<()> {
+            Ok(())
+        }
+        fn get_historical_rates(
+            &self,
+            _: &str,
+            _: &str,
+            _: i64,
+        ) -> wealthfolio_core::Result<Vec<wealthfolio_core::fx::ExchangeRate>> {
+            Ok(vec![])
+        }
+        fn get_latest_exchange_rate(&self, _: &str, _: &str) -> wealthfolio_core::Result<Decimal> {
+            Ok(Decimal::ONE)
+        }
+        fn get_exchange_rate_for_date(
+            &self,
+            _: &str,
+            _: &str,
+            _: chrono::NaiveDate,
+        ) -> wealthfolio_core::Result<Decimal> {
+            Ok(Decimal::ONE)
+        }
+        fn convert_currency(
+            &self,
+            amount: Decimal,
+            _: &str,
+            _: &str,
+        ) -> wealthfolio_core::Result<Decimal> {
+            Ok(amount)
+        }
+        fn convert_currency_for_date(
+            &self,
+            amount: Decimal,
+            _: &str,
+            _: &str,
+            _: chrono::NaiveDate,
+        ) -> wealthfolio_core::Result<Decimal> {
+            Ok(amount)
+        }
+        fn get_latest_exchange_rates(
+            &self,
+        ) -> wealthfolio_core::Result<Vec<wealthfolio_core::fx::ExchangeRate>> {
+            Ok(vec![])
+        }
+        async fn add_exchange_rate(
+            &self,
+            _: wealthfolio_core::fx::NewExchangeRate,
+        ) -> wealthfolio_core::Result<wealthfolio_core::fx::ExchangeRate> {
+            unimplemented!("PassthroughFx is read-only")
+        }
+        async fn update_exchange_rate(
+            &self,
+            _: &str,
+            _: &str,
+            _: Decimal,
+        ) -> wealthfolio_core::Result<wealthfolio_core::fx::ExchangeRate> {
+            unimplemented!("PassthroughFx is read-only")
+        }
+        async fn delete_exchange_rate(&self, _: &str) -> wealthfolio_core::Result<()> {
+            Ok(())
+        }
+        async fn register_currency_pair(&self, _: &str, _: &str) -> wealthfolio_core::Result<()> {
+            Ok(())
+        }
+        async fn register_currency_pair_manual(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> wealthfolio_core::Result<()> {
+            Ok(())
+        }
+        async fn ensure_fx_pairs(&self, _: Vec<(String, String)>) -> wealthfolio_core::Result<()> {
+            Ok(())
+        }
+    }
+
     #[derive(Default)]
     struct MockSettingsRepo;
 
@@ -1655,6 +1748,7 @@ mod tests {
             split_repo.clone(),
             activity_events,
             events,
+            Arc::new(PassthroughFx),
         );
         (service, assignment_repo, split_repo)
     }
