@@ -111,20 +111,21 @@ npx playwright test && npx playwright show-report
 
 ## Test files
 
-| File                                   | What it tests                                                                                                               |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `01-happy-path.spec.ts`                | Onboarding, accounts, deposits, trades                                                                                      |
-| `02-activities.spec.ts`                | All activity types                                                                                                          |
-| `03-fx-cash-balance.spec.ts`           | FX cash balances                                                                                                            |
-| `04-csv-import.spec.ts`                | CSV activity import                                                                                                         |
-| `05-form-validation.spec.ts`           | Form field validation errors                                                                                                |
-| `06-activity-data-grid.spec.ts`        | Activity data grid interactions                                                                                             |
-| `07-asset-creation.spec.ts`            | Manual asset creation and editing                                                                                           |
-| `08-holdings-and-performance.spec.ts`  | Holdings and performance views                                                                                              |
-| `09-bulk-holdings.spec.ts`             | Bulk holdings CSV import                                                                                                    |
-| `10-symbol-mapping-validation.spec.ts` | Symbol mapping real-time validation (Yahoo Finance, Börse Frankfurt)                                                        |
-| `13-multi-exchange-import.spec.ts`     | Multi-exchange CSV import: XETRA/LSE/TSX/NASDAQ resolution, region & instrument-type classification (issue #855)            |
-| `16-final-cash-policy.spec.ts`         | Final-cash writer policy through CSV import: persisted amounts + review flags per policy row, fixture-computed ledger total |
+| File                                   | What it tests                                                                                                                    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `01-happy-path.spec.ts`                | Onboarding, accounts, deposits, trades                                                                                           |
+| `02-activities.spec.ts`                | All activity types                                                                                                               |
+| `03-fx-cash-balance.spec.ts`           | FX cash balances                                                                                                                 |
+| `04-csv-import.spec.ts`                | CSV activity import                                                                                                              |
+| `05-form-validation.spec.ts`           | Form field validation errors                                                                                                     |
+| `06-activity-data-grid.spec.ts`        | Activity data grid interactions                                                                                                  |
+| `07-asset-creation.spec.ts`            | Manual asset creation and editing                                                                                                |
+| `08-holdings-and-performance.spec.ts`  | Holdings and performance views                                                                                                   |
+| `09-bulk-holdings.spec.ts`             | Bulk holdings CSV import                                                                                                         |
+| `10-symbol-mapping-validation.spec.ts` | Symbol mapping real-time validation (Yahoo Finance, Börse Frankfurt)                                                             |
+| `13-multi-exchange-import.spec.ts`     | Multi-exchange CSV import: XETRA/LSE/TSX/NASDAQ resolution, region & instrument-type classification (issue #855)                 |
+| `16-final-cash-policy.spec.ts`         | Final-cash writer policy through CSV import: persisted amounts + review flags per policy row, fixture-computed ledger total      |
+| `17-spending-view-edit-mode.spec.ts`   | Spending view/edit toggle: mode shared with investments + persisted, category popover inside a grid cell, inline note edit saves |
 
 ---
 
