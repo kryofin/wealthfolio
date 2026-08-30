@@ -1,4 +1,4 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { QueryKeys } from "@/lib/query-keys";
@@ -57,6 +57,51 @@ export function useCashActivitySearch(
     isError: query.isError,
     hasNextPage: query.hasNextPage ?? false,
     fetchNextPage: query.fetchNextPage,
+    refetch: query.refetch,
+    error: query.error,
+  };
+}
+
+/**
+ * Page-at-a-time variant of {@link useCashActivitySearch}, for the transactions
+ * grid (edit mode). The grid is paginated rather than infinite because its body
+ * is `contain: strict` with no scroll-end hook, so it cannot host a load-more
+ * sentinel the way the view-mode table does.
+ *
+ * Kept separate from `useCashActivitySearch` rather than folded into it as a
+ * `mode` switch, so view mode keeps its exact current behaviour.
+ */
+export function useCashActivityPage(
+  request: Omit<CashActivitySearchRequest, "offset" | "limit">,
+  options: { pageIndex: number; pageSize?: number; enabled?: boolean },
+) {
+  const pageSize = options.pageSize ?? PAGE_SIZE;
+  const { pageIndex, enabled = true } = options;
+
+  const query = useQuery<CashActivitySearchResponse, Error>({
+    queryKey: [QueryKeys.SPENDING_TRANSACTIONS, "page", request, pageIndex, pageSize],
+    queryFn: () =>
+      searchCashActivities({
+        ...request,
+        offset: pageIndex * pageSize,
+        limit: pageSize,
+      }),
+    // Keeps the previous page on screen while the next one loads, so the grid
+    // does not collapse to zero rows and lose scroll/focus between pages.
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+
+  const items: CashActivity[] = useMemo(() => query.data?.items ?? [], [query.data]);
+  const totalCount = query.data?.totalCount ?? 0;
+
+  return {
+    items,
+    totalCount,
+    pageCount: Math.ceil(totalCount / pageSize) || 1,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
     refetch: query.refetch,
     error: query.error,
   };
