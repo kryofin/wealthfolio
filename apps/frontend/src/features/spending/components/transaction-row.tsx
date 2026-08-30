@@ -5,12 +5,7 @@ import type { Account } from "@/lib/types";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
   Badge,
-  Button,
   Checkbox,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Icons,
   PrivacyAmount,
   TableCell,
@@ -18,19 +13,11 @@ import {
   useDateFormatting,
 } from "@wealthfolio/ui";
 
-import {
-  getCashActivityLabel,
-  getEffectiveCashActivityType,
-  isCreditCardAccountType,
-} from "../lib/constants";
-import {
-  getTransactionDisplay,
-  getTransferLinkStatus,
-  isTransferCashActivity,
-  type TransactionRowVM,
-} from "../lib/transactions-helpers";
+import { getCashActivityLabel, getEffectiveCashActivityType } from "../lib/constants";
+import { getTransactionDisplay, type TransactionRowVM } from "../lib/transactions-helpers";
 import { QuickCategorizePopover } from "./quick-categorize-popover";
 import { QuickEventPopover } from "./quick-event-popover";
+import { TransactionRowActions } from "./transaction-row-actions";
 
 interface TransactionRowProps {
   row: TransactionRowVM;
@@ -82,10 +69,6 @@ function TransactionRowImpl({
     ? t("spending:transactions.deselect")
     : t("spending:transactions.select");
   const activityType = getEffectiveCashActivityType(a);
-  const isTransfer = isTransferCashActivity(a);
-  const transferLinkStatus = getTransferLinkStatus(a);
-  const canMarkReimbursement =
-    isIncome && !isCreditCardAccountType(account?.accountType) && activityType !== "CREDIT";
   const formattedDate = formatDateTime(a.activityDate, dateFormatting, appTimezone);
   const typeBadgeVariant =
     isIncome || isSaving || isRefund ? "success" : isOutflow ? "destructive" : "secondary";
@@ -238,59 +221,17 @@ function TransactionRowImpl({
         <PrivacyAmount value={Math.abs(safeAmount)} currency={a.currency} />
       </TableCell>
       <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              aria-label={t("spending:transactions.rowActions")}
-            >
-              <Icons.MoreVertical className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onEdit(row)}>
-              <Icons.Pencil className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t("common:edit")}
-            </DropdownMenuItem>
-            {canMarkReimbursement && (
-              <DropdownMenuItem onClick={() => onMarkReimbursement(row)}>
-                <Icons.RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                {t("spending:transactions.markReimbursement")}
-              </DropdownMenuItem>
-            )}
-            {!isNeutral && (
-              <DropdownMenuItem onClick={() => onEditSplits(row)}>
-                <Icons.SplitHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />
-                {t("spending:transactions.splitTransaction")}
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => onDuplicate(row)}>
-              <Icons.Copy className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t("spending:transactions.duplicate")}
-            </DropdownMenuItem>
-            {isTransfer && (onLinkTransfer || onUnlinkTransfer) ? (
-              transferLinkStatus === "linked" ? (
-                onUnlinkTransfer ? (
-                  <DropdownMenuItem onClick={() => onUnlinkTransfer(row)}>
-                    <Icons.Unlink className="mr-2 h-4 w-4" aria-hidden="true" />
-                    {t("spending:transactions.unlinkTransfer")}
-                  </DropdownMenuItem>
-                ) : null
-              ) : onLinkTransfer ? (
-                <DropdownMenuItem onClick={() => onLinkTransfer(row)}>
-                  <Icons.Link className="mr-2 h-4 w-4" aria-hidden="true" />
-                  {t("spending:transactions.linkTransfer")}
-                </DropdownMenuItem>
-              ) : null
-            ) : null}
-            <DropdownMenuItem className="text-destructive" onClick={() => onDelete(row)}>
-              <Icons.Trash className="mr-2 h-4 w-4" aria-hidden="true" />
-              {t("common:delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <TransactionRowActions
+          row={row}
+          accountType={account?.accountType}
+          onMarkReimbursement={onMarkReimbursement}
+          onEditSplits={onEditSplits}
+          onEdit={onEdit}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
+          onLinkTransfer={onLinkTransfer}
+          onUnlinkTransfer={onUnlinkTransfer}
+        />
       </TableCell>
     </TableRow>
   );

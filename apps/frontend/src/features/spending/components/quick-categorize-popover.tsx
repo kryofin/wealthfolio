@@ -114,7 +114,7 @@ export function QuickCategorizePopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-70 p-0" align={align}>
+      <PopoverContent data-grid-popover="" className="w-70 p-0" align={align}>
         <Command>
           <CommandInput placeholder={t("spending:category.searchCategories")} />
           <CommandList>
