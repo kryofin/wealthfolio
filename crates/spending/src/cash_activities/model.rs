@@ -142,6 +142,25 @@ pub struct CashActivity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_link_status: Option<TransferLinkStatus>,
+    /// `|amount|` converted to the caller's base currency at this activity's
+    /// own date, so clients can sum rows across currencies. Magnitude only —
+    /// the display sign comes from `cash_flow_bucket`. `None` when the caller
+    /// did not ask for conversion.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub converted_amount: Option<f64>,
+}
+
+/// Net balance over the FULL filtered set (not just the returned page),
+/// converted to the caller-provided base currency. Signed the way each row
+/// displays: income and refunds add, spending outflows and savings transfers
+/// subtract, neutral rows contribute nothing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FilteredBalance {
+    pub amount: f64,
+    /// Currency the balance is denominated in (the base currency).
+    pub currency: String,
 }
 
 /// Paginated response for cash-activity search.
@@ -151,4 +170,9 @@ pub struct CashActivitySearchResponse {
     pub items: Vec<CashActivity>,
     /// Total rows matching the filters (for pagination UI).
     pub total_count: usize,
+    /// Net balance over the full filtered set. Only computed for the first page
+    /// (`offset == 0`); `None` on subsequent pages.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filtered_balance: Option<FilteredBalance>,
 }

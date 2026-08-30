@@ -163,9 +163,11 @@ async fn search_cash_activities(
         return Ok(Json(CashActivitySearchResponse {
             items: Vec::new(),
             total_count: 0,
+            filtered_balance: None,
         }));
     }
-    let response = state.cash_activity_service.search(request).await?;
+    let base = state.base_currency.read().unwrap().clone();
+    let response = state.cash_activity_service.search(request, &base).await?;
     Ok(Json(response))
 }
 

@@ -1561,6 +1561,7 @@ impl CashActivityServiceTrait for MockCashActivityService {
             wealthfolio_spending::cash_activities::CashActivitySearchResponse {
                 items,
                 total_count,
+                filtered_balance: None,
             },
         )
     }

@@ -16,7 +16,9 @@ pub trait CashActivityServiceTrait: Send + Sync {
 #[async_trait]
 impl CashActivityServiceTrait for CashActivityService {
     async fn search(&self, req: CashActivitySearchRequest) -> Result<CashActivitySearchResponse> {
-        CashActivityService::search(self, req).await
+        // Agent tools read native per-row amounts; no base currency, so the
+        // service skips FX conversion and the filtered balance.
+        CashActivityService::search(self, req, "").await
     }
 
     async fn get_by_activity_ids(&self, activity_ids: &[String]) -> Result<Vec<CashActivity>> {

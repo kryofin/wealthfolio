@@ -154,11 +154,13 @@ pub async fn search_cash_activities(
         return Ok(CashActivitySearchResponse {
             items: Vec::new(),
             total_count: 0,
+            filtered_balance: None,
         });
     }
+    let base_currency = state.get_base_currency();
     state
         .cash_activity_service()
-        .search(request.unwrap_or_default())
+        .search(request.unwrap_or_default(), &base_currency)
         .await
         .map_err(|e| format!("Failed to search cash activities: {}", e))
 }

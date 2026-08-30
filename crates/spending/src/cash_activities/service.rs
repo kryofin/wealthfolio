@@ -15,8 +15,8 @@ use wealthfolio_core::activities::{
 use super::{
     model::{
         CashActivity, CashActivityFilter, CashActivitySearchRequest, CashActivitySearchResponse,
-        CashActivitySortField, CashActivityStatusFilter, CashFlowBucket, SortDirection,
-        TransferLinkStatus,
+        CashActivitySortField, CashActivityStatusFilter, CashFlowBucket, FilteredBalance,
+        SortDirection, TransferLinkStatus,
     },
     CASH_ACTIVITY_TYPES,
 };
@@ -27,8 +27,8 @@ use crate::activity_assignments::{
     ActivityTaxonomyAssignment, ActivityTaxonomyAssignmentService, BulkCategoryAssignment,
 };
 use crate::activity_classification::{
-    activity_abs_amount, classify_activity, classify_activity_for_aggregation,
-    within_spending_transfer_groups, SpendingClassification,
+    activity_abs_amount, classify_activity, classify_activity_for_aggregation, decimal_to_f64,
+    fx_to_target, within_spending_transfer_groups, SpendingClassification,
 };
 use crate::activity_splits::{ActivitySplit, ActivitySplitRepositoryTrait, NewActivitySplit};
 use crate::error::SpendingError;
@@ -160,6 +160,7 @@ impl CashActivityService {
                     splits,
                     event_id,
                     transfer_link_status,
+                    converted_amount: None,
                 }
             })
             .collect();
@@ -167,16 +168,23 @@ impl CashActivityService {
     }
 
     /// Search/filter/paginate cash activities. Powers the spending Transactions page.
-    /// Server-side pipeline: filters → sort → paginate → join assignments for the page slice.
+    /// Server-side pipeline: filters → sort → filtered balance → paginate → join
+    /// assignments for the page slice.
+    ///
+    /// `base_currency` is the currency the filtered balance and the per-row
+    /// converted amounts are denominated in. It is injected by the app-level
+    /// callers (never sent by the client); pass an empty string to skip both.
     pub async fn search(
         &self,
         req: CashActivitySearchRequest,
+        base_currency: &str,
     ) -> Result<CashActivitySearchResponse> {
         let s = self.settings.get().await?;
         if !s.enabled || s.account_ids.is_empty() {
             return Ok(CashActivitySearchResponse {
                 items: Vec::new(),
                 total_count: 0,
+                filtered_balance: None,
             });
         }
 
@@ -186,6 +194,7 @@ impl CashActivityService {
             return Ok(CashActivitySearchResponse {
                 items: Vec::new(),
                 total_count: 0,
+                filtered_balance: None,
             });
         }
         let all_spending_account_ids: HashSet<&str> =
@@ -201,6 +210,7 @@ impl CashActivityService {
             return Ok(CashActivitySearchResponse {
                 items: Vec::new(),
                 total_count: 0,
+                filtered_balance: None,
             });
         }
 
@@ -394,6 +404,23 @@ impl CashActivityService {
 
         let total_count = activities.len();
 
+        // Net balance over the FULL filtered set — computed before pagination so
+        // it covers every matching row, not just the returned page. Only the
+        // first page carries it: page 1 is refetched on every filter change, so
+        // later pages can skip the recomputation.
+        let filtered_balance = (req.offset == 0 && !base_currency.is_empty()).then(|| {
+            let amount = activities
+                .iter()
+                .map(|a| {
+                    self.converted_net_amount(a, &account_types, &transfer_groups, base_currency)
+                })
+                .sum();
+            FilteredBalance {
+                amount: decimal_to_f64(amount),
+                currency: base_currency.to_string(),
+            }
+        });
+
         // Paginate
         let offset = req.offset.min(total_count);
         let limit = req.limit.min(MAX_CASH_ACTIVITY_SEARCH_LIMIT);
@@ -419,6 +446,8 @@ impl CashActivityService {
                 let event_id = tag_map.remove(&a.id);
                 let cash_flow_bucket = cash_flow_bucket_for(&a, &account_types, &transfer_groups);
                 let transfer_link_status = transfer_link_status_for(&a, &transfer_link_resolution);
+                let converted_amount = (!base_currency.is_empty())
+                    .then(|| decimal_to_f64(self.converted_abs_amount(&a, base_currency)));
                 CashActivity {
                     activity: a,
                     cash_flow_bucket,
@@ -426,11 +455,50 @@ impl CashActivityService {
                     splits,
                     event_id,
                     transfer_link_status,
+                    converted_amount,
                 }
             })
             .collect();
 
-        Ok(CashActivitySearchResponse { items, total_count })
+        Ok(CashActivitySearchResponse {
+            items,
+            total_count,
+            filtered_balance,
+        })
+    }
+
+    /// `|amount|` converted to `target` at the activity's own date. Falls back
+    /// to the native amount when no rate is available, so a missing rate
+    /// understates rather than drops the row.
+    fn converted_abs_amount(&self, activity: &Activity, target: &str) -> Decimal {
+        let native = activity_abs_amount(activity);
+        fx_to_target(
+            self.fx.as_ref(),
+            native,
+            &activity.currency,
+            target,
+            activity.activity_date.date_naive(),
+        )
+        .unwrap_or(native)
+    }
+
+    /// Signed contribution of one activity to the filtered balance, in
+    /// `target` currency. Sign matches what the row displays — income and
+    /// refunds add, spending outflows and savings transfers subtract, neutral
+    /// rows contribute nothing.
+    fn converted_net_amount(
+        &self,
+        activity: &Activity,
+        account_types: &HashMap<String, String>,
+        transfer_groups: &HashSet<String>,
+        target: &str,
+    ) -> Decimal {
+        let Some(account_type) = account_types.get(&activity.account_id) else {
+            return Decimal::ZERO;
+        };
+        let classification =
+            classify_activity_for_aggregation(activity, account_type, transfer_groups);
+        classification.net_amount(self.converted_abs_amount(activity, target))
     }
 
     /// Fetch explicit activity ids without applying the normal status/date/limit
@@ -489,6 +557,7 @@ impl CashActivityService {
                     splits,
                     event_id,
                     transfer_link_status,
+                    converted_amount: None,
                 }
             })
             .collect())
@@ -1053,6 +1122,10 @@ mod tests {
         Arc::new(MockFx { rate: Decimal::ONE })
     }
 
+    fn fixed_rate_fx(rate: Decimal) -> Arc<MockFx> {
+        Arc::new(MockFx { rate })
+    }
+
     #[async_trait]
     impl wealthfolio_core::fx::FxServiceTrait for MockFx {
         fn initialize(&self) -> wealthfolio_core::Result<()> {
@@ -1075,7 +1148,7 @@ mod tests {
             _: &str,
             _: chrono::NaiveDate,
         ) -> wealthfolio_core::Result<Decimal> {
-            Ok(Decimal::ONE)
+            Ok(self.rate)
         }
         fn convert_currency(
             &self,
@@ -1083,7 +1156,7 @@ mod tests {
             _: &str,
             _: &str,
         ) -> wealthfolio_core::Result<Decimal> {
-            Ok(amount)
+            Ok(amount * self.rate)
         }
         fn convert_currency_for_date(
             &self,
@@ -1092,7 +1165,7 @@ mod tests {
             _: &str,
             _: chrono::NaiveDate,
         ) -> wealthfolio_core::Result<Decimal> {
-            Ok(amount)
+            Ok(amount * self.rate)
         }
         fn get_latest_exchange_rates(
             &self,
@@ -1103,7 +1176,7 @@ mod tests {
             &self,
             _: wealthfolio_core::fx::NewExchangeRate,
         ) -> wealthfolio_core::Result<wealthfolio_core::fx::ExchangeRate> {
-            unimplemented!("PassthroughFx is read-only")
+            unimplemented!("MockFx is read-only")
         }
         async fn update_exchange_rate(
             &self,
@@ -1111,7 +1184,7 @@ mod tests {
             _: &str,
             _: Decimal,
         ) -> wealthfolio_core::Result<wealthfolio_core::fx::ExchangeRate> {
-            unimplemented!("PassthroughFx is read-only")
+            unimplemented!("MockFx is read-only")
         }
         async fn delete_exchange_rate(&self, _: &str) -> wealthfolio_core::Result<()> {
             Ok(())
@@ -1748,9 +1821,61 @@ mod tests {
             split_repo.clone(),
             activity_events,
             events,
-            Arc::new(PassthroughFx),
+            passthrough_fx(),
         );
         (service, assignment_repo, split_repo)
+    }
+
+    /// Service over an arbitrary activity set, for the search tests. Every
+    /// activity lives on the single CASH account the mocks expose.
+    fn make_search_service(
+        activities: Vec<Activity>,
+        fx: Arc<MockFx>,
+        account_type: &str,
+    ) -> CashActivityService {
+        let activity_repo = Arc::new(MockActivityRepo { activities });
+        let account_repo = Arc::new(MockAccountRepo {
+            account: account(account_type),
+        });
+        let settings = Arc::new(SpendingSettingsService::new(Arc::new(MockSettingsRepo)));
+        let assignment_service = Arc::new(ActivityTaxonomyAssignmentService::new(Arc::new(
+            MockAssignmentRepo::default(),
+        )
+            as Arc<dyn crate::activity_assignments::ActivityTaxonomyAssignmentRepositoryTrait>));
+        let split_repo = Arc::new(MockSplitRepo::default());
+        let activity_events = Arc::new(MockActivityEventsRepo);
+        let events = Arc::new(EventsService::new(
+            Arc::new(MockEventTypesRepo),
+            Arc::new(MockEventsRepo),
+            activity_repo.clone() as Arc<dyn ActivityRepositoryTrait>,
+            activity_events.clone(),
+        ));
+        CashActivityService::new(
+            activity_repo as Arc<dyn ActivityRepositoryTrait>,
+            account_repo,
+            settings,
+            assignment_service,
+            split_repo,
+            activity_events,
+            events,
+            fx,
+        )
+    }
+
+    /// `activity()` with a distinct id, so a set of them survives the search
+    /// pipeline as separate rows.
+    fn search_activity(id: &str, activity_type: &str, amount: i64) -> Activity {
+        let mut a = activity(activity_type);
+        a.id = id.to_string();
+        a.amount = Some(Decimal::new(amount, 0));
+        a
+    }
+
+    fn search_request() -> CashActivitySearchRequest {
+        CashActivitySearchRequest {
+            limit: 50,
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -1887,5 +2012,114 @@ mod tests {
             .contains("Neutral transfers cannot be split"));
         assert!(assignment_repo.cleared.lock().unwrap().is_empty());
         assert!(split_repo.replaced.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn filtered_balance_signs_each_bucket_the_way_its_row_displays() {
+        // Deposit +100 income, withdrawal -40 outflow, refund credit +15,
+        // cross-boundary transfer out -25 saving, and a within-spending
+        // transfer pair contributing nothing.
+        let mut refund = search_activity("refund", "CREDIT", 15);
+        refund.subtype = Some("REFUND".to_string());
+        let mut saving = search_activity("saving", "TRANSFER_OUT", 25);
+        saving.source_group_id = Some("cross-boundary".to_string());
+        let mut internal_out = search_activity("internal-out", "TRANSFER_OUT", 500);
+        internal_out.source_group_id = Some("within".to_string());
+        let mut internal_in = search_activity("internal-in", "TRANSFER_IN", 500);
+        internal_in.source_group_id = Some("within".to_string());
+
+        let service = make_search_service(
+            vec![
+                search_activity("income", "DEPOSIT", 100),
+                search_activity("spend", "WITHDRAWAL", 40),
+                refund,
+                saving,
+                internal_out,
+                internal_in,
+            ],
+            passthrough_fx(),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "USD").await.unwrap();
+        let balance = response.filtered_balance.unwrap();
+
+        assert_eq!(response.total_count, 6);
+        assert_eq!(balance.amount, 50.0);
+        assert_eq!(balance.currency, "USD");
+    }
+
+    #[tokio::test]
+    async fn filtered_balance_covers_rows_beyond_the_requested_page() {
+        let activities: Vec<Activity> = (0..5)
+            .map(|i| search_activity(&format!("spend-{i}"), "WITHDRAWAL", 10))
+            .collect();
+        let service = make_search_service(activities, passthrough_fx(), account_types::CASH);
+
+        let response = service
+            .search(
+                CashActivitySearchRequest {
+                    limit: 2,
+                    ..search_request()
+                },
+                "USD",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.items.len(), 2);
+        assert_eq!(response.total_count, 5);
+        assert_eq!(response.filtered_balance.unwrap().amount, -50.0);
+    }
+
+    #[tokio::test]
+    async fn filtered_balance_and_row_amounts_convert_to_the_base_currency() {
+        let service = make_search_service(
+            vec![search_activity("spend", "WITHDRAWAL", 40)],
+            fixed_rate_fx(Decimal::new(2, 0)),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "EUR").await.unwrap();
+
+        assert_eq!(response.filtered_balance.unwrap().amount, -80.0);
+        // Rows carry the converted magnitude; the sign stays with the bucket.
+        assert_eq!(response.items[0].converted_amount, Some(80.0));
+    }
+
+    #[tokio::test]
+    async fn later_pages_skip_the_filtered_balance() {
+        let activities: Vec<Activity> = (0..5)
+            .map(|i| search_activity(&format!("spend-{i}"), "WITHDRAWAL", 10))
+            .collect();
+        let service = make_search_service(activities, passthrough_fx(), account_types::CASH);
+
+        let response = service
+            .search(
+                CashActivitySearchRequest {
+                    offset: 2,
+                    limit: 2,
+                    ..search_request()
+                },
+                "USD",
+            )
+            .await
+            .unwrap();
+
+        assert!(response.filtered_balance.is_none());
+    }
+
+    #[tokio::test]
+    async fn an_empty_base_currency_skips_conversion_entirely() {
+        let service = make_search_service(
+            vec![search_activity("spend", "WITHDRAWAL", 40)],
+            passthrough_fx(),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "").await.unwrap();
+
+        assert!(response.filtered_balance.is_none());
+        assert!(response.items[0].converted_amount.is_none());
     }
 }
