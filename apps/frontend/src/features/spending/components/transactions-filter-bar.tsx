@@ -65,6 +65,9 @@ interface TransactionsFilterBarProps {
   totalCount: number;
   isRefreshing: boolean;
   isMobile?: boolean;
+
+  /** Rendered at the far right of the desktop bar, matching ActivityViewControls. */
+  viewModeToggle?: React.ReactNode;
 }
 
 export function TransactionsFilterBar({
@@ -98,6 +101,7 @@ export function TransactionsFilterBar({
   totalCount,
   isRefreshing,
   isMobile = false,
+  viewModeToggle,
 }: TransactionsFilterBarProps) {
   const { t } = useTranslation();
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -254,6 +258,7 @@ export function TransactionsFilterBar({
           />
         )}
       </span>
+      {viewModeToggle}
     </div>
   );
 }

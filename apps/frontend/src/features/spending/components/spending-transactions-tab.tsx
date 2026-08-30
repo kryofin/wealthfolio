@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { SortingState } from "@tanstack/react-table";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -16,7 +17,8 @@ import type { DateRange } from "react-day-picker";
 import { createActivity, deleteActivity, updateActivity } from "@/adapters";
 import { generateId } from "@/lib/id";
 import { useAccounts } from "@/hooks/use-accounts";
-import { useIsMobileViewport } from "@/hooks/use-platform";
+import { useIsCompactTableViewport, useIsMobileViewport } from "@/hooks/use-platform";
+import { usePersistentState } from "@/hooks/use-persistent-state";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useTaxonomy } from "@/hooks/use-taxonomies";
 import { QueryKeys } from "@/lib/query-keys";
@@ -65,7 +67,10 @@ import {
   toRowVM,
   type TransactionRowVM,
 } from "../lib/transactions-helpers";
-import { useCashActivitySearch } from "../hooks/use-cash-activity-search";
+import { useCashActivityPage, useCashActivitySearch } from "../hooks/use-cash-activity-search";
+import { toSpendingGridRow } from "../lib/spending-grid-row";
+import { ActivityViewModeToggle } from "@/pages/activity/components/activity-view-mode-toggle";
+import { SpendingDataGrid } from "./spending-data-grid";
 import {
   useAssignActivityCategory,
   useBulkAssignCategories,
@@ -146,6 +151,9 @@ function sameDateRange(a: DateRange | undefined, b: DateRange | undefined): bool
   );
 }
 const SEARCH_DEBOUNCE_MS = 300;
+
+/** Matches the hard-coded order view mode has always used. */
+const DEFAULT_GRID_SORTING: SortingState = [{ id: "date", desc: true }];
 
 export interface SpendingTransactionsTabHandle {
   openAddForm: () => void;
@@ -485,6 +493,44 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
       refetch,
     } = useCashActivitySearch(searchRequest);
 
+    // Shared with the investments tab on purpose: one toggle, one stored value,
+    // so both tabs move between view and edit mode together.
+    const [viewMode, setViewMode] = usePersistentState<"table" | "datagrid">(
+      "activity-view-mode",
+      "table",
+    );
+    const isCompactViewport = useIsCompactTableViewport();
+    // Edit mode is desktop-only, mirroring how investments falls back to its
+    // mobile list below the same breakpoint.
+    const isGridView = viewMode === "datagrid" && !isCompactViewport;
+
+    const [gridPageIndex, setGridPageIndex] = useState(0);
+    const [gridPageSize, setGridPageSize] = useState(50);
+    const [gridSorting, setGridSorting] = useState<SortingState>(DEFAULT_GRID_SORTING);
+
+    // Sorting is deliberately *not* folded into `searchRequest`: that object also
+    // drives view mode, which has no sort control and assumes date/desc. Only the
+    // grid's own query carries the user's choice.
+    const gridRequest = useMemo(() => {
+      const [sort] = gridSorting;
+      return {
+        ...searchRequest,
+        sortBy: sort?.id === "amount" ? ("amount" as const) : ("date" as const),
+        sortDir: sort ? (sort.desc ? ("desc" as const) : ("asc" as const)) : ("desc" as const),
+      };
+    }, [searchRequest, gridSorting]);
+
+    const gridPage = useCashActivityPage(gridRequest, {
+      pageIndex: gridPageIndex,
+      pageSize: gridPageSize,
+      enabled: isGridView,
+    });
+
+    // Reset to the first page whenever the filters or the sort change underneath us.
+    useEffect(() => {
+      setGridPageIndex(0);
+    }, [gridRequest]);
+
     const accountById = useMemo(() => {
       const m = new Map<string, Account>();
       spendingAccounts.forEach((a) => m.set(a.id, a));
@@ -497,6 +543,16 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
     const rows: TransactionRowVM[] = useMemo(
       () => items.map((it) => toRowVM(it, allCategories)),
       [items, allCategories],
+    );
+
+    // Edit-mode rows are flattened: DataGridRow memoises on the row.original
+    // reference, so anything a cell displays has to live on the row itself.
+    const gridRows = useMemo(
+      () =>
+        gridPage.items.map((item) =>
+          toSpendingGridRow(item, { accountById, allCategories, eventsById, eventTypeById }),
+        ),
+      [gridPage.items, accountById, allCategories, eventsById, eventTypeById],
     );
     const bulkCategoryScope = useMemo<QuickCategorizeScope | null>(() => {
       if (selectedRowIds.size === 0) return null;
@@ -734,6 +790,14 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
       },
       [accountById],
     );
+    // `mutate` is the stable handle; the mutation object itself is not, and the
+    // grid's column defs memoise on this callback's identity.
+    const { mutate: markReimbursement } = markReimbursementMutation;
+    const handleMarkReimbursement = useCallback(
+      (row: TransactionRowVM) => markReimbursement(row),
+      [markReimbursement],
+    );
+
     const handleDeleteRow = useCallback((row: TransactionRowVM) => {
       const activityType = getEffectiveCashActivityType(row.activity);
       setDeletingIds([row.activity.id]);
@@ -933,6 +997,14 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
           totalCount={totalCount}
           isRefreshing={isRefreshing}
           isMobile={isMobile}
+          viewModeToggle={
+            // Same control, same place as ActivityViewControls puts it on the
+            // investments tab. Hidden on compact viewports, where both tabs fall
+            // back to their card lists.
+            !isCompactViewport ? (
+              <ActivityViewModeToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+            ) : undefined
+          }
         />
 
         {selectedRowIds.size > 0 && (
@@ -963,6 +1035,34 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
               {t("common:retry")}
             </Button>
           </EmptyPlaceholder>
+        ) : isGridView ? (
+          <SpendingDataGrid
+            rows={gridRows}
+            accounts={spendingAccounts}
+            pageIndex={gridPageIndex}
+            pageSize={gridPageSize}
+            pageCount={gridPage.pageCount}
+            totalRowCount={gridPage.totalCount}
+            isFetching={gridPage.isFetching}
+            onPageChange={setGridPageIndex}
+            onPageSizeChange={(size) => {
+              setGridPageSize(size);
+              setGridPageIndex(0);
+            }}
+            onAssignCategory={handleAssignCategory}
+            onClearCategory={handleClearCategory}
+            onSetEvent={handleSetEvent}
+            onEditSplits={setSplittingActivity}
+            onAddTransaction={openAddForm}
+            onMarkReimbursement={handleMarkReimbursement}
+            onEdit={handleEditRow}
+            onDuplicate={handleDuplicate}
+            onDelete={handleDeleteRow}
+            onLinkTransfer={handleLinkTransfer}
+            onUnlinkTransfer={handleUnlinkTransfer}
+            sorting={gridSorting}
+            onSortingChange={setGridSorting}
+          />
         ) : rows.length === 0 ? (
           <EmptyPlaceholder>
             <EmptyPlaceholder.Icon name="Activity" />

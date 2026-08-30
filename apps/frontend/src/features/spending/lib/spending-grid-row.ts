@@ -42,7 +42,7 @@ export interface SpendingGridLookups {
   accountById: Map<string, Account>;
   allCategories: Map<string, TaxonomyCategory>;
   eventsById: Map<string, { id: string; name: string; eventTypeId: string }>;
-  eventTypeById: Map<string, { color: string | null }>;
+  eventTypeById: Map<string, { color?: string | null }>;
 }
 
 export function toSpendingGridRow(
