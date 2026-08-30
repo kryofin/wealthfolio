@@ -201,6 +201,8 @@
     "countLabel_one": "{{visible}} / {{total}} transaction",
     "countLabel_other": "{{visible}} / {{total}} transactions",
     "countZero": "0 transactions",
+    "selectedBalance": "Selected balance:",
+    "filteredBalance": "Filtered balance:",
     "category": "Category",
     "subcategory": "Subcategory",
     "event": "Event",

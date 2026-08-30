@@ -201,6 +201,8 @@
     "countLabel_one": "{{visible}} / {{total}} Transaktion",
     "countLabel_other": "{{visible}} / {{total}} Transaktionen",
     "countZero": "0 Transaktionen",
+    "selectedBalance": "Ausgewählter Saldo:",
+    "filteredBalance": "Gefilterter Saldo:",
     "category": "Kategorie",
     "subcategory": "Unterkategorie",
     "event": "Ereignis",

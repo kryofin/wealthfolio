@@ -81,9 +81,22 @@ export interface CashActivity extends Activity {
   eventId?: string | null;
   /** Transfer pair validity for effective TRANSFER_IN / TRANSFER_OUT rows. */
   transferLinkStatus?: TransferLinkStatus | null;
+  /**
+   * `|amount|` in the base currency, so rows in different currencies can be
+   * summed. Magnitude only — the display sign comes from `cashFlowBucket`.
+   */
+  convertedAmount?: number;
+}
+
+/** Net balance over the full filtered set, in the base currency. */
+export interface FilteredBalance {
+  amount: number;
+  currency: string;
 }
 
 export interface CashActivitySearchResponse {
   items: CashActivity[];
   totalCount: number;
+  /** Only present on the first page (offset 0). */
+  filteredBalance?: FilteredBalance;
 }

@@ -47,10 +47,14 @@ export function useCashActivitySearch(
     [query.data],
   );
   const totalCount = query.data?.pages[0]?.totalCount ?? 0;
+  // The backend only computes the balance for the first page (offset 0), which
+  // React Query refetches on every filter change.
+  const filteredBalance = query.data?.pages[0]?.filteredBalance ?? null;
 
   return {
     items,
     totalCount,
+    filteredBalance,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     isFetchingNextPage: query.isFetchingNextPage,

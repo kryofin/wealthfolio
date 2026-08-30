@@ -199,6 +199,8 @@
     "countLabel_one": "{{visible}} / {{total}} 笔交易",
     "countLabel_other": "{{visible}} / {{total}} 笔交易",
     "countZero": "0 笔交易",
+    "selectedBalance": "已选余额：",
+    "filteredBalance": "筛选余额：",
     "category": "类别",
     "subcategory": "子类别",
     "event": "事件",

@@ -14,11 +14,12 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
+  PrivacyAmount,
 } from "@wealthfolio/ui";
 
 import { AmountRangeFilter, type AmountRange } from "./amount-range-filter";
 import { DateRangeFilter } from "./date-range-filter";
-import type { CashActivityStatusFilter } from "../types/cash-activity";
+import type { CashActivityStatusFilter, FilteredBalance } from "../types/cash-activity";
 
 export interface FilterOption {
   value: string;
@@ -63,6 +64,10 @@ interface TransactionsFilterBarProps {
   // Count display
   visibleCount: number;
   totalCount: number;
+  /** Net of the checked rows. `null` when nothing is selected. */
+  selectedBalance?: FilteredBalance | null;
+  /** Net over the full filtered set, all pages. `null` while loading. */
+  filteredBalance?: FilteredBalance | null;
   isRefreshing: boolean;
   isMobile?: boolean;
 }
@@ -96,6 +101,8 @@ export function TransactionsFilterBar({
   onClearAll,
   visibleCount,
   totalCount,
+  selectedBalance,
+  filteredBalance,
   isRefreshing,
   isMobile = false,
 }: TransactionsFilterBarProps) {
@@ -125,6 +132,27 @@ export function TransactionsFilterBar({
           count: totalCount,
         })
       : t("spending:filters.countZero");
+
+  // Selected covers the checked rows; filtered covers the whole result set,
+  // including pages not yet loaded. Both can be on screen at once.
+  const balancePills = (
+    <>
+      {selectedBalance && (
+        <BalancePill
+          label={t("spending:filters.selectedBalance")}
+          balance={selectedBalance}
+          testId="selected-balance"
+        />
+      )}
+      {filtersActive && filteredBalance && (
+        <BalancePill
+          label={t("spending:filters.filteredBalance")}
+          balance={filteredBalance}
+          testId="filtered-balance"
+        />
+      )}
+    </>
+  );
 
   const filterControls = (
     <>
@@ -200,6 +228,11 @@ export function TransactionsFilterBar({
             </div>
           </Button>
         </div>
+        {(selectedBalance || (filtersActive && filteredBalance)) && (
+          <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-xs tabular-nums">
+            {balancePills}
+          </div>
+        )}
         <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
           <SheetContent side="bottom" className="rounded-t-4xl mx-1 flex h-[80vh] flex-col p-0">
             <SheetHeader className="border-border border-b px-6 py-4 text-left">
@@ -245,15 +278,42 @@ export function TransactionsFilterBar({
           {t("spending:filters.clearAll")}
         </Button>
       )}
-      <span className="text-muted-foreground ml-auto inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs tabular-nums">
-        {countLabel}
-        {isRefreshing && (
-          <Icons.Spinner
-            className="h-3 w-3 animate-spin"
-            aria-label={t("spending:filters.refreshing")}
-          />
-        )}
+      <span className="text-muted-foreground ml-auto inline-flex shrink-0 items-center gap-2 whitespace-nowrap text-xs tabular-nums">
+        {balancePills}
+        <span className="inline-flex items-center gap-1.5">
+          {countLabel}
+          {isRefreshing && (
+            <Icons.Spinner
+              className="h-3 w-3 animate-spin"
+              aria-label={t("spending:filters.refreshing")}
+            />
+          )}
+        </span>
       </span>
     </div>
+  );
+}
+
+function BalancePill({
+  label,
+  balance,
+  testId,
+}: {
+  label: string;
+  balance: FilteredBalance;
+  testId: string;
+}) {
+  return (
+    <span
+      className="bg-muted/60 text-muted-foreground inline-flex items-center gap-1 rounded px-1.5 py-0.5"
+      data-testid={testId}
+    >
+      {label}
+      <PrivacyAmount
+        className="text-foreground font-medium"
+        value={balance.amount}
+        currency={balance.currency}
+      />
+    </span>
   );
 }

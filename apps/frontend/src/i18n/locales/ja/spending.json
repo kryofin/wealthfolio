@@ -199,6 +199,8 @@
     "countLabel_one": "取引 {{visible}} / {{total}}件",
     "countLabel_other": "取引 {{visible}} / {{total}}件",
     "countZero": "取引0件",
+    "selectedBalance": "選択中の残高:",
+    "filteredBalance": "絞り込み後の残高:",
     "category": "カテゴリ",
     "subcategory": "サブカテゴリ",
     "event": "イベント",

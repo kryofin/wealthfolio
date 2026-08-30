@@ -1,0 +1,125 @@
+import { render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
+
+import { TransactionsFilterBar } from "./transactions-filter-bar";
+import type { FilteredBalance } from "../types/cash-activity";
+
+vi.mock("@wealthfolio/ui", () => ({
+  Button: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
+    <button onClick={onClick}>{children}</button>
+  ),
+  FacetedFilter: () => null,
+  FacetedSearchInput: () => null,
+  Icons: {
+    ListFilter: () => null,
+    Spinner: () => null,
+  },
+  Input: () => <input />,
+  PrivacyAmount: ({ value, currency }: { value: number; currency: string }) => (
+    <span>{`${currency} ${value}`}</span>
+  ),
+  ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Sheet: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock("./amount-range-filter", () => ({
+  AmountRangeFilter: () => null,
+}));
+
+vi.mock("./date-range-filter", () => ({
+  DateRangeFilter: () => null,
+}));
+
+function renderFilterBar({
+  selectedBalance,
+  filteredBalance,
+  filtersActive = false,
+}: {
+  selectedBalance?: FilteredBalance | null;
+  filteredBalance?: FilteredBalance | null;
+  filtersActive?: boolean;
+}) {
+  return render(
+    <TransactionsFilterBar
+      searchInput=""
+      onSearchInputChange={vi.fn()}
+      statusFilter="all"
+      onStatusFilterChange={vi.fn()}
+      dateRange={undefined}
+      onDateRangeChange={vi.fn()}
+      selectedAccounts={new Set()}
+      onAccountsChange={vi.fn()}
+      selectedTypes={new Set()}
+      onTypesChange={vi.fn()}
+      selectedCategories={new Set()}
+      onCategoriesChange={vi.fn()}
+      selectedSubcategories={new Set()}
+      onSubcategoriesChange={vi.fn()}
+      selectedEvents={new Set()}
+      onEventsChange={vi.fn()}
+      amountRange={{ min: null, max: null }}
+      onAmountRangeChange={vi.fn()}
+      accountOptions={[]}
+      typeOptions={[]}
+      categoryOptions={[]}
+      subcategoryOptions={[]}
+      eventOptions={[]}
+      hasEvents={false}
+      filtersActive={filtersActive}
+      onClearAll={vi.fn()}
+      visibleCount={1}
+      totalCount={3}
+      selectedBalance={selectedBalance}
+      filteredBalance={filteredBalance}
+      isRefreshing={false}
+    />,
+  );
+}
+
+const selected: FilteredBalance = { amount: -120, currency: "USD" };
+const filtered: FilteredBalance = { amount: 400, currency: "USD" };
+
+describe("TransactionsFilterBar balance pills", () => {
+  it("shows the selected balance whenever rows are selected", () => {
+    renderFilterBar({ selectedBalance: selected });
+
+    expect(screen.getByTestId("selected-balance")).toHaveTextContent("Selected balance:USD -120");
+    expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+
+  it("shows the filtered balance only while a filter is active", () => {
+    renderFilterBar({ filteredBalance: filtered, filtersActive: true });
+
+    expect(screen.getByTestId("filtered-balance")).toHaveTextContent("Filtered balance:USD 400");
+    expect(screen.queryByTestId("selected-balance")).not.toBeInTheDocument();
+  });
+
+  it("hides the filtered balance when no filter is active", () => {
+    renderFilterBar({ filteredBalance: filtered, filtersActive: false });
+
+    expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+
+  it("shows both balances together", () => {
+    renderFilterBar({
+      selectedBalance: selected,
+      filteredBalance: filtered,
+      filtersActive: true,
+    });
+
+    expect(screen.getByTestId("selected-balance")).toBeInTheDocument();
+    expect(screen.getByTestId("filtered-balance")).toBeInTheDocument();
+  });
+
+  it("renders no pills when neither balance is available", () => {
+    renderFilterBar({});
+
+    expect(screen.queryByTestId("selected-balance")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+});

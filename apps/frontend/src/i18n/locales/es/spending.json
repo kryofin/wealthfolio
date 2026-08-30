@@ -208,6 +208,8 @@
     "countLabel_other": "{{visible}} / {{total}} transacciones",
     "countLabel_many": "{{visible}} / {{total}} transacciones",
     "countZero": "0 transacciones",
+    "selectedBalance": "Saldo seleccionado:",
+    "filteredBalance": "Saldo filtrado:",
     "category": "Categoría",
     "subcategory": "Subcategoría",
     "event": "Evento",
