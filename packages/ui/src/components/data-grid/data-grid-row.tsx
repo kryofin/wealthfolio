@@ -49,6 +49,12 @@ export const DataGridRow = React.memo(DataGridRowImpl, (prev, next) => {
     return false;
   }
 
+  // Re-render if the caller's per-row class changed (e.g. a row-level status
+  // tint whose source data lives outside `row.original`)
+  if (prev.className !== next.className) {
+    return false;
+  }
+
   // Re-render if the number of columns changed (columns added/removed)
   if (prev.columnCount !== next.columnCount) {
     return false;

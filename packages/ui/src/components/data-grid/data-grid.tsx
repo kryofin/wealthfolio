@@ -1,5 +1,6 @@
 "use client";
 
+import type { Row } from "@tanstack/react-table";
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { Icons } from "../ui/icons";
@@ -22,6 +23,8 @@ interface DataGridProps<TData>
   dir?: Direction;
   /** Height of the grid. Can be a number (px) or CSS string like "100%" */
   height?: number | string;
+  /** Extra classes for a single row, e.g. a status tint. */
+  rowClassName?: (row: Row<TData>) => string | undefined;
   stretchColumns?: boolean;
   virtualTotalSize: number;
   virtualItems: ReturnType<typeof useDataGrid<TData>>["virtualItems"];
@@ -52,6 +55,7 @@ export function DataGrid<TData>({
   pasteDialog,
   onRowAdd,
   height,
+  rowClassName,
   stretchColumns = false,
   className,
   ...props
@@ -196,6 +200,7 @@ export function DataGrid<TData>({
                 readOnly={readOnly}
                 stretchColumns={stretchColumns}
                 columnCount={columns.length}
+                className={rowClassName?.(row)}
               />
             );
           })}
