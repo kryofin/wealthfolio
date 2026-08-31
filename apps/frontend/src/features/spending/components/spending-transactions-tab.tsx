@@ -61,7 +61,7 @@ import {
 } from "../lib/constants";
 import { cashActivityFlowMetadata } from "../lib/cash-activity-form-utils";
 import {
-  getTransactionDisplay,
+  computeSelectedBalance,
   isTransferCashActivity,
   stableArr,
   toRowVM,
@@ -517,20 +517,15 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
       return null;
     }, [rows, selectedRowIds]);
 
-    // Net of the checked rows, signed the same way each row renders. Selection
-    // is limited to loaded rows, so this needs no extra round-trip.
+    // Net of the checked rows. Selection is limited to loaded rows, so this
+    // needs no extra round-trip.
     const selectedBalance = useMemo(() => {
-      if (selectedRowIds.size === 0) return null;
-      const amount = rows
-        .filter((row) => selectedRowIds.has(row.activity.id))
-        .reduce((sum, row) => {
-          const account = accountById.get(row.activity.accountId);
-          const { sign, safeAmount } = getTransactionDisplay(row.activity, account?.accountType);
-          const magnitude = row.activity.convertedAmount ?? Math.abs(safeAmount);
-          if (sign === "-") return sum - magnitude;
-          if (sign === "+") return sum + magnitude;
-          return sum;
-        }, 0);
+      const amount = computeSelectedBalance(
+        rows,
+        selectedRowIds,
+        (accountId) => accountById.get(accountId)?.accountType,
+      );
+      if (amount === null) return null;
       return { amount, currency: filteredBalance?.currency ?? settings?.baseCurrency ?? "USD" };
     }, [rows, selectedRowIds, accountById, filteredBalance, settings?.baseCurrency]);
 

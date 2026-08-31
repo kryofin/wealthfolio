@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { CashActivity } from "../types/cash-activity";
-import { getTransferLinkStatus, isTransferCashActivity, toRowVM } from "./transactions-helpers";
+import {
+  computeSelectedBalance,
+  getTransferLinkStatus,
+  isTransferCashActivity,
+  toRowVM,
+  type TransactionRowVM,
+} from "./transactions-helpers";
 
 function cashActivity(overrides: Partial<CashActivity>): CashActivity {
   return {
@@ -100,5 +106,71 @@ describe("spending transaction helpers", () => {
 
     expect(row.category).toBeNull();
     expect(row.splitCount).toBe(2);
+  });
+});
+
+describe("computeSelectedBalance", () => {
+  const cashAccount = () => "CASH";
+
+  function row(overrides: Partial<CashActivity>): TransactionRowVM {
+    return {
+      activity: cashActivity(overrides),
+      category: null,
+      splitCount: 0,
+      needsReview: false,
+    };
+  }
+
+  const income = row({ id: "income", activityType: "DEPOSIT", amount: "1000", cashFlowBucket: "income" }); // prettier-ignore
+  const outflow = row({ id: "outflow", activityType: "WITHDRAWAL", amount: "400", cashFlowBucket: "spending" }); // prettier-ignore
+  const refund = row({ id: "refund", activityType: "CREDIT", subtype: "REFUND", amount: "150", cashFlowBucket: "spending" }); // prettier-ignore
+  const saving = row({ id: "saving", activityType: "TRANSFER_OUT", sourceGroupId: "x", amount: "250", cashFlowBucket: "saving" }); // prettier-ignore
+  const neutral = row({ id: "neutral", activityType: "TRANSFER_IN", sourceGroupId: "y", amount: "900", cashFlowBucket: "neutral" }); // prettier-ignore
+
+  const all = [income, outflow, refund, saving, neutral];
+  const idsOf = (...rows: TransactionRowVM[]) => new Set(rows.map((r) => r.activity.id));
+
+  it("returns null when nothing is selected", () => {
+    expect(computeSelectedBalance(all, new Set(), cashAccount)).toBeNull();
+  });
+
+  it.each([
+    ["income adds", income, 1000],
+    ["spending outflows subtract", outflow, -400],
+    ["refunds add", refund, 150],
+    ["savings transfers subtract", saving, -250],
+    ["neutral transfers contribute nothing", neutral, 0],
+  ])("%s", (_label, selectedRow, expected) => {
+    expect(computeSelectedBalance(all, idsOf(selectedRow), cashAccount)).toBe(expected);
+  });
+
+  it("nets a mixed selection", () => {
+    // 1000 - 400 + 150 - 250 + 0
+    expect(computeSelectedBalance(all, idsOf(...all), cashAccount)).toBe(500);
+  });
+
+  it("counts only the selected rows", () => {
+    expect(computeSelectedBalance(all, idsOf(income, outflow), cashAccount)).toBe(600);
+  });
+
+  it("uses the base-currency amount so a mixed-currency selection still sums", () => {
+    const foreign = row({
+      id: "foreign",
+      activityType: "WITHDRAWAL",
+      amount: "40",
+      currency: "EUR",
+      cashFlowBucket: "spending",
+      convertedAmount: 80,
+    });
+
+    expect(computeSelectedBalance([foreign], idsOf(foreign), cashAccount)).toBe(-80);
+  });
+
+  it("falls back to the native amount when the server did not convert", () => {
+    expect(computeSelectedBalance([outflow], idsOf(outflow), cashAccount)).toBe(-400);
+  });
+
+  it("ignores ids that are not among the loaded rows", () => {
+    expect(computeSelectedBalance(all, new Set(["not-loaded"]), cashAccount)).toBe(0);
   });
 });

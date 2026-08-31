@@ -109,6 +109,36 @@ export function getTransactionDisplay(
   return { isOutflow, isIncome, isSaving, isRefund, isNeutral, sign, safeAmount };
 }
 
+/**
+ * Net of the selected rows, signed the same way each row renders: income and
+ * refunds add, spending outflows and savings transfers subtract, neutral rows
+ * contribute nothing. Returns `null` when nothing is selected.
+ *
+ * Rows carry `convertedAmount` (the base-currency magnitude) so a selection
+ * spanning currencies still sums; the native amount is the fallback when the
+ * server did not convert. Because the signs mirror the row display, selecting
+ * every row of a filtered set yields the server's filtered balance.
+ */
+export function computeSelectedBalance(
+  rows: TransactionRowVM[],
+  selectedRowIds: Set<string>,
+  accountTypeFor: (accountId: string) => string | undefined,
+): number | null {
+  if (selectedRowIds.size === 0) return null;
+  return rows
+    .filter((row) => selectedRowIds.has(row.activity.id))
+    .reduce((sum, row) => {
+      const { sign, safeAmount } = getTransactionDisplay(
+        row.activity,
+        accountTypeFor(row.activity.accountId),
+      );
+      const magnitude = row.activity.convertedAmount ?? Math.abs(safeAmount);
+      if (sign === "-") return sum - magnitude;
+      if (sign === "+") return sum + magnitude;
+      return sum;
+    }, 0);
+}
+
 export function toRowVM(
   item: CashActivity,
   allCategories: Map<string, TaxonomyCategory>,

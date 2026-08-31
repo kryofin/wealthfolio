@@ -92,6 +92,34 @@ describe("TransactionsFilterBar balance pills", () => {
     expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
   });
 
+  // The default view: the server sends a filtered balance on every page-0
+  // request, filtered or not, so only `filtersActive` keeps that pill hidden.
+  it("shows only the selected balance when rows are selected without a filter", () => {
+    renderFilterBar({
+      selectedBalance: selected,
+      filteredBalance: filtered,
+      filtersActive: false,
+    });
+
+    expect(screen.getByTestId("selected-balance")).toBeInTheDocument();
+    expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+
+  // While a filter change is in flight the balance is briefly absent.
+  it("shows only the selected balance when the filtered balance has not loaded", () => {
+    renderFilterBar({ selectedBalance: selected, filteredBalance: null, filtersActive: true });
+
+    expect(screen.getByTestId("selected-balance")).toBeInTheDocument();
+    expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+
+  it("renders no pills while a filter is active but its balance is still loading", () => {
+    renderFilterBar({ filteredBalance: null, filtersActive: true });
+
+    expect(screen.queryByTestId("selected-balance")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+
   it("shows the filtered balance only while a filter is active", () => {
     renderFilterBar({ filteredBalance: filtered, filtersActive: true });
 
