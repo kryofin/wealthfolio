@@ -520,14 +520,10 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
     // Net of the checked rows. Selection is limited to loaded rows, so this
     // needs no extra round-trip.
     const selectedBalance = useMemo(() => {
-      const amount = computeSelectedBalance(
-        rows,
-        selectedRowIds,
-        (accountId) => accountById.get(accountId)?.accountType,
-      );
+      const amount = computeSelectedBalance(rows, selectedRowIds);
       if (amount === null) return null;
       return { amount, currency: filteredBalance?.currency ?? settings?.baseCurrency ?? "USD" };
-    }, [rows, selectedRowIds, accountById, filteredBalance, settings?.baseCurrency]);
+    }, [rows, selectedRowIds, filteredBalance, settings?.baseCurrency]);
 
     const filtersActive =
       !!debouncedSearch ||

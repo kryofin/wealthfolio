@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CashActivity } from "../types/cash-activity";
 import {
   computeSelectedBalance,
+  getTransactionDisplay,
   getTransferLinkStatus,
   isTransferCashActivity,
   toRowVM,
@@ -110,67 +111,78 @@ describe("spending transaction helpers", () => {
 });
 
 describe("computeSelectedBalance", () => {
-  const cashAccount = () => "CASH";
-
-  function row(overrides: Partial<CashActivity>): TransactionRowVM {
+  function row(id: string, cashMovement: number | undefined): TransactionRowVM {
     return {
-      activity: cashActivity(overrides),
+      activity: cashActivity({ id, cashMovement }),
       category: null,
       splitCount: 0,
       needsReview: false,
     };
   }
 
-  const income = row({ id: "income", activityType: "DEPOSIT", amount: "1000", cashFlowBucket: "income" }); // prettier-ignore
-  const outflow = row({ id: "outflow", activityType: "WITHDRAWAL", amount: "400", cashFlowBucket: "spending" }); // prettier-ignore
-  const refund = row({ id: "refund", activityType: "CREDIT", subtype: "REFUND", amount: "150", cashFlowBucket: "spending" }); // prettier-ignore
-  const saving = row({ id: "saving", activityType: "TRANSFER_OUT", sourceGroupId: "x", amount: "250", cashFlowBucket: "saving" }); // prettier-ignore
-  const neutral = row({ id: "neutral", activityType: "TRANSFER_IN", sourceGroupId: "y", amount: "900", cashFlowBucket: "neutral" }); // prettier-ignore
+  // Server-signed movements: money in is positive, money out negative.
+  const income = row("income", 1000);
+  const outflow = row("outflow", -400);
+  const refund = row("refund", 150);
+  const transferIn = row("transfer-in", 900);
+  const transferOut = row("transfer-out", -900);
 
-  const all = [income, outflow, refund, saving, neutral];
+  const all = [income, outflow, refund, transferIn, transferOut];
   const idsOf = (...rows: TransactionRowVM[]) => new Set(rows.map((r) => r.activity.id));
 
   it("returns null when nothing is selected", () => {
-    expect(computeSelectedBalance(all, new Set(), cashAccount)).toBeNull();
+    expect(computeSelectedBalance(all, new Set())).toBeNull();
   });
 
   it.each([
-    ["income adds", income, 1000],
-    ["spending outflows subtract", outflow, -400],
+    ["inflows add", income, 1000],
+    ["outflows subtract", outflow, -400],
     ["refunds add", refund, 150],
-    ["savings transfers subtract", saving, -250],
-    ["neutral transfers contribute nothing", neutral, 0],
+    ["transfers in add", transferIn, 900],
+    ["transfers out subtract", transferOut, -900],
   ])("%s", (_label, selectedRow, expected) => {
-    expect(computeSelectedBalance(all, idsOf(selectedRow), cashAccount)).toBe(expected);
+    expect(computeSelectedBalance(all, idsOf(selectedRow))).toBe(expected);
   });
 
   it("nets a mixed selection", () => {
-    // 1000 - 400 + 150 - 250 + 0
-    expect(computeSelectedBalance(all, idsOf(...all), cashAccount)).toBe(500);
+    // 1000 - 400 + 150 + 900 - 900
+    expect(computeSelectedBalance(all, idsOf(...all))).toBe(750);
   });
 
   it("counts only the selected rows", () => {
-    expect(computeSelectedBalance(all, idsOf(income, outflow), cashAccount)).toBe(600);
+    expect(computeSelectedBalance(all, idsOf(income, outflow))).toBe(600);
   });
 
-  it("uses the base-currency amount so a mixed-currency selection still sums", () => {
-    const foreign = row({
-      id: "foreign",
-      activityType: "WITHDRAWAL",
-      amount: "40",
-      currency: "EUR",
-      cashFlowBucket: "spending",
-      convertedAmount: 80,
-    });
-
-    expect(computeSelectedBalance([foreign], idsOf(foreign), cashAccount)).toBe(-80);
+  // Both legs of an internal move cancel — the money never left the accounts.
+  it("nets a transfer pair to zero", () => {
+    expect(computeSelectedBalance(all, idsOf(transferIn, transferOut))).toBe(0);
   });
 
-  it("falls back to the native amount when the server did not convert", () => {
-    expect(computeSelectedBalance([outflow], idsOf(outflow), cashAccount)).toBe(-400);
+  it("ignores rows the server did not convert", () => {
+    const unconverted = row("unconverted", undefined);
+    expect(computeSelectedBalance([unconverted], idsOf(unconverted))).toBe(0);
   });
 
   it("ignores ids that are not among the loaded rows", () => {
-    expect(computeSelectedBalance(all, new Set(["not-loaded"]), cashAccount)).toBe(0);
+    expect(computeSelectedBalance(all, new Set(["not-loaded"]))).toBe(0);
+  });
+});
+
+// The balance counts transfers by direction, but the table still draws them
+// unsigned. Pinned so a later edit cannot silently repaint every transfer row.
+describe("transfer rows stay visually neutral", () => {
+  it("gives neutral rows no sign", () => {
+    const transfer = cashActivity({
+      id: "transfer",
+      activityType: "TRANSFER_IN",
+      sourceGroupId: "pair",
+      cashFlowBucket: "neutral",
+      cashMovement: 900,
+    });
+
+    const display = getTransactionDisplay(transfer, "CASH");
+
+    expect(display.sign).toBe("");
+    expect(display.isNeutral).toBe(true);
   });
 });

@@ -110,33 +110,26 @@ export function getTransactionDisplay(
 }
 
 /**
- * Net of the selected rows, signed the same way each row renders: income and
- * refunds add, spending outflows and savings transfers subtract, neutral rows
- * contribute nothing. Returns `null` when nothing is selected.
+ * Net cash movement of the selected rows: positive when money entered the
+ * accounts, negative when it left. Returns `null` when nothing is selected.
  *
- * Rows carry `convertedAmount` (the base-currency magnitude) so a selection
- * spanning currencies still sums; the native amount is the fallback when the
- * server did not convert. Because the signs mirror the row display, selecting
- * every row of a filtered set yields the server's filtered balance.
+ * The per-row signed amount is computed server-side (`cashMovement`, in the base
+ * currency) by the same resolver that builds account balances, so this is a plain
+ * sum — deliberately not re-derived from `getTransactionDisplay`, which drives row
+ * colour and the +/- glyph and would drift from the server's rule. Rows missing a
+ * `cashMovement` (the server was not asked to convert) contribute nothing.
+ *
+ * Note this is not the same question the row signs answer: transfers count by
+ * direction here, while the table still renders them unsigned as neutral.
  */
 export function computeSelectedBalance(
   rows: TransactionRowVM[],
   selectedRowIds: Set<string>,
-  accountTypeFor: (accountId: string) => string | undefined,
 ): number | null {
   if (selectedRowIds.size === 0) return null;
   return rows
     .filter((row) => selectedRowIds.has(row.activity.id))
-    .reduce((sum, row) => {
-      const { sign, safeAmount } = getTransactionDisplay(
-        row.activity,
-        accountTypeFor(row.activity.accountId),
-      );
-      const magnitude = row.activity.convertedAmount ?? Math.abs(safeAmount);
-      if (sign === "-") return sum - magnitude;
-      if (sign === "+") return sum + magnitude;
-      return sum;
-    }, 0);
+    .reduce((sum, row) => sum + (row.activity.cashMovement ?? 0), 0);
 }
 
 export function toRowVM(

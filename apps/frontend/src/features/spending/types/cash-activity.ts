@@ -82,10 +82,12 @@ export interface CashActivity extends Activity {
   /** Transfer pair validity for effective TRANSFER_IN / TRANSFER_OUT rows. */
   transferLinkStatus?: TransferLinkStatus | null;
   /**
-   * `|amount|` in the base currency, so rows in different currencies can be
-   * summed. Magnitude only — the display sign comes from `cashFlowBucket`.
+   * Signed cash movement in the base currency: positive when money entered the
+   * account, negative when it left. Computed server-side by the same resolver
+   * that builds account balances, so clients sum these directly rather than
+   * re-deriving a sign from `cashFlowBucket`.
    */
-  convertedAmount?: number;
+  cashMovement?: number;
 }
 
 /** Net balance over the full filtered set, in the base currency. */

@@ -11,6 +11,7 @@ use wealthfolio_core::activities::{
     Activity, ActivityRepositoryTrait, TransferPairResolution, ACTIVITY_TYPE_TRANSFER_IN,
     ACTIVITY_TYPE_TRANSFER_OUT,
 };
+use wealthfolio_core::portfolio::economic_events::ActivityEconomicsResolver;
 
 use super::{
     model::{
@@ -160,7 +161,7 @@ impl CashActivityService {
                     splits,
                     event_id,
                     transfer_link_status,
-                    converted_amount: None,
+                    cash_movement: None,
                 }
             })
             .collect();
@@ -411,9 +412,7 @@ impl CashActivityService {
         let filtered_balance = (req.offset == 0 && !base_currency.is_empty()).then(|| {
             let amount = activities
                 .iter()
-                .map(|a| {
-                    self.converted_net_amount(a, &account_types, &transfer_groups, base_currency)
-                })
+                .map(|a| self.cash_movement(a, &account_types, base_currency))
                 .sum();
             FilteredBalance {
                 amount: decimal_to_f64(amount),
@@ -446,8 +445,8 @@ impl CashActivityService {
                 let event_id = tag_map.remove(&a.id);
                 let cash_flow_bucket = cash_flow_bucket_for(&a, &account_types, &transfer_groups);
                 let transfer_link_status = transfer_link_status_for(&a, &transfer_link_resolution);
-                let converted_amount = (!base_currency.is_empty())
-                    .then(|| decimal_to_f64(self.converted_abs_amount(&a, base_currency)));
+                let cash_movement = (!base_currency.is_empty())
+                    .then(|| decimal_to_f64(self.cash_movement(&a, &account_types, base_currency)));
                 CashActivity {
                     activity: a,
                     cash_flow_bucket,
@@ -455,7 +454,7 @@ impl CashActivityService {
                     splits,
                     event_id,
                     transfer_link_status,
-                    converted_amount,
+                    cash_movement,
                 }
             })
             .collect();
@@ -467,11 +466,44 @@ impl CashActivityService {
         })
     }
 
-    /// `|amount|` converted to `target` at the activity's own date. Falls back
-    /// to the native amount when no rate is available, so a missing rate
-    /// understates rather than drops the row.
-    fn converted_abs_amount(&self, activity: &Activity, target: &str) -> Decimal {
-        let native = activity_abs_amount(activity);
+    /// Signed cash movement of one activity in `target` currency: positive when
+    /// money entered the account, negative when it left.
+    ///
+    /// The sign and magnitude come from `ActivityEconomicsResolver`, the same
+    /// resolver the holdings engine uses to build account cash balances, so this
+    /// total reconciles with the account page by construction rather than by a
+    /// parallel sign table. That also handles the cases a hand-rolled mapping
+    /// gets wrong: credit-card interest is a charge, and a security-transfer leg
+    /// moves only its fee.
+    ///
+    /// Non-POSTED rows contribute nothing — they are visible in this list but
+    /// excluded from balances, so counting them here would disagree with the
+    /// account page.
+    ///
+    /// Unlike the spending buckets, transfers count by direction instead of
+    /// washing out: a Transfer-In filter totals inflow. The FX conversion is
+    /// applied to the *signed* effect, not to `|amount|`, because those two
+    /// differ for security transfers. Falls back to the native amount when no
+    /// rate is available, so a missing rate understates rather than drops a row.
+    fn cash_movement(
+        &self,
+        activity: &Activity,
+        account_types: &HashMap<String, String>,
+        target: &str,
+    ) -> Decimal {
+        if !activity.is_posted() {
+            return Decimal::ZERO;
+        }
+        let is_credit_card = account_types
+            .get(&activity.account_id)
+            .is_some_and(|account_type| account_type == account_types::CREDIT_CARD);
+        let native = ActivityEconomicsResolver::resolve_cash_with_account_context(
+            activity,
+            Decimal::ONE,
+            is_credit_card,
+        )
+        .signed_cash_effect
+        .unwrap_or(Decimal::ZERO);
         fx_to_target(
             self.fx.as_ref(),
             native,
@@ -480,25 +512,6 @@ impl CashActivityService {
             activity.activity_date.date_naive(),
         )
         .unwrap_or(native)
-    }
-
-    /// Signed contribution of one activity to the filtered balance, in
-    /// `target` currency. Sign matches what the row displays — income and
-    /// refunds add, spending outflows and savings transfers subtract, neutral
-    /// rows contribute nothing.
-    fn converted_net_amount(
-        &self,
-        activity: &Activity,
-        account_types: &HashMap<String, String>,
-        transfer_groups: &HashSet<String>,
-        target: &str,
-    ) -> Decimal {
-        let Some(account_type) = account_types.get(&activity.account_id) else {
-            return Decimal::ZERO;
-        };
-        let classification =
-            classify_activity_for_aggregation(activity, account_type, transfer_groups);
-        classification.net_amount(self.converted_abs_amount(activity, target))
     }
 
     /// Fetch explicit activity ids without applying the normal status/date/limit
@@ -557,7 +570,7 @@ impl CashActivityService {
                     splits,
                     event_id,
                     transfer_link_status,
-                    converted_amount: None,
+                    cash_movement: None,
                 }
             })
             .collect())
@@ -2014,11 +2027,12 @@ mod tests {
         assert!(split_repo.replaced.lock().unwrap().is_empty());
     }
 
+    /// The balance measures cash movement, not the spending net: transfers
+    /// count by direction instead of washing out to zero.
     #[tokio::test]
-    async fn filtered_balance_signs_each_bucket_the_way_its_row_displays() {
-        // Deposit +100 income, withdrawal -40 outflow, refund credit +15,
-        // cross-boundary transfer out -25 saving, and a within-spending
-        // transfer pair contributing nothing.
+    async fn filtered_balance_sums_signed_cash_movement() {
+        // +100 deposit, -40 withdrawal, +15 refund credit, -25 transfer out,
+        // and a transfer pair whose two legs cancel (-500 +500).
         let mut refund = search_activity("refund", "CREDIT", 15);
         refund.subtype = Some("REFUND".to_string());
         let mut saving = search_activity("saving", "TRANSFER_OUT", 25);
@@ -2047,6 +2061,143 @@ mod tests {
         assert_eq!(response.total_count, 6);
         assert_eq!(balance.amount, 50.0);
         assert_eq!(balance.currency, "USD");
+    }
+
+    /// Regression for the reported bug: filtering to Transfer In showed 0.00
+    /// because every linked transfer classified as a neutral internal move.
+    #[tokio::test]
+    async fn filtering_to_transfer_in_totals_the_inflow() {
+        let mut linked_a = search_activity("in-a", "TRANSFER_IN", 300);
+        linked_a.source_group_id = Some("pair-a".to_string());
+        let mut linked_b = search_activity("in-b", "TRANSFER_IN", 200);
+        linked_b.source_group_id = Some("pair-b".to_string());
+        let mut paired_out = search_activity("out-a", "TRANSFER_OUT", 300);
+        paired_out.source_group_id = Some("pair-a".to_string());
+
+        let service = make_search_service(
+            vec![linked_a, linked_b, paired_out],
+            passthrough_fx(),
+            account_types::CASH,
+        );
+
+        let response = service
+            .search(
+                CashActivitySearchRequest {
+                    activity_types: Some(vec!["TRANSFER_IN".to_string()]),
+                    ..search_request()
+                },
+                "USD",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.total_count, 2);
+        assert_eq!(response.filtered_balance.unwrap().amount, 500.0);
+    }
+
+    #[tokio::test]
+    async fn filtering_to_transfer_out_totals_the_outflow() {
+        let mut out_a = search_activity("out-a", "TRANSFER_OUT", 300);
+        out_a.source_group_id = Some("pair-a".to_string());
+        let mut out_b = search_activity("out-b", "TRANSFER_OUT", 200);
+        out_b.source_group_id = Some("pair-b".to_string());
+
+        let service =
+            make_search_service(vec![out_a, out_b], passthrough_fx(), account_types::CASH);
+
+        let response = service
+            .search(
+                CashActivitySearchRequest {
+                    activity_types: Some(vec!["TRANSFER_OUT".to_string()]),
+                    ..search_request()
+                },
+                "USD",
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.filtered_balance.unwrap().amount, -500.0);
+    }
+
+    /// Both legs of an internal move still cancel when both are in the filtered
+    /// set — the money never left the user's accounts.
+    #[tokio::test]
+    async fn a_transfer_pair_in_the_same_filter_still_nets_to_zero() {
+        let mut out = search_activity("out", "TRANSFER_OUT", 750);
+        out.source_group_id = Some("pair".to_string());
+        let mut into = search_activity("in", "TRANSFER_IN", 750);
+        into.source_group_id = Some("pair".to_string());
+
+        let service = make_search_service(vec![out, into], passthrough_fx(), account_types::CASH);
+
+        let response = service.search(search_request(), "USD").await.unwrap();
+
+        assert_eq!(response.filtered_balance.unwrap().amount, 0.0);
+    }
+
+    /// A plain CREDIT with no subtype is `Ignored`, so it never appears in this
+    /// list at all — and therefore cannot count toward the balance. It does move
+    /// cash on the account page, so this is a known reconciliation gap, pinned
+    /// here so the exclusion stays deliberate rather than accidental.
+    #[tokio::test]
+    async fn a_credit_without_a_subtype_is_not_listed_and_so_is_excluded() {
+        let service = make_search_service(
+            vec![search_activity("credit", "CREDIT", 60)],
+            passthrough_fx(),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "USD").await.unwrap();
+
+        assert_eq!(response.total_count, 0);
+        assert_eq!(response.filtered_balance.unwrap().amount, 0.0);
+    }
+
+    /// A refund credit is visible, and moves cash in.
+    #[tokio::test]
+    async fn a_refund_credit_counts_as_an_inflow() {
+        let mut refund = search_activity("refund", "CREDIT", 60);
+        refund.subtype = Some("REFUND".to_string());
+
+        let service = make_search_service(vec![refund], passthrough_fx(), account_types::CASH);
+
+        let response = service.search(search_request(), "USD").await.unwrap();
+
+        assert_eq!(response.filtered_balance.unwrap().amount, 60.0);
+        assert_eq!(response.items[0].cash_movement, Some(60.0));
+    }
+
+    /// Interest is income on a cash account but a charge on a credit card.
+    #[tokio::test]
+    async fn credit_card_interest_is_an_outflow() {
+        let service = make_search_service(
+            vec![search_activity("interest", "INTEREST", 12)],
+            passthrough_fx(),
+            account_types::CREDIT_CARD,
+        );
+
+        let response = service.search(search_request(), "USD").await.unwrap();
+
+        assert_eq!(response.filtered_balance.unwrap().amount, -12.0);
+    }
+
+    /// Non-POSTED rows are visible in this list but excluded from account
+    /// balances, so counting them here would disagree with the account page.
+    #[tokio::test]
+    async fn rows_that_are_not_posted_contribute_nothing() {
+        let mut draft = search_activity("draft", "DEPOSIT", 400);
+        draft.status = ActivityStatus::Draft;
+
+        let service = make_search_service(
+            vec![draft, search_activity("posted", "DEPOSIT", 100)],
+            passthrough_fx(),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "USD").await.unwrap();
+
+        assert_eq!(response.total_count, 2);
+        assert_eq!(response.filtered_balance.unwrap().amount, 100.0);
     }
 
     #[tokio::test]
@@ -2084,7 +2235,7 @@ mod tests {
 
         assert_eq!(response.filtered_balance.unwrap().amount, -80.0);
         // Rows carry the converted magnitude; the sign stays with the bucket.
-        assert_eq!(response.items[0].converted_amount, Some(80.0));
+        assert_eq!(response.items[0].cash_movement, Some(-80.0));
     }
 
     #[tokio::test]
@@ -2120,6 +2271,6 @@ mod tests {
         let response = service.search(search_request(), "").await.unwrap();
 
         assert!(response.filtered_balance.is_none());
-        assert!(response.items[0].converted_amount.is_none());
+        assert!(response.items[0].cash_movement.is_none());
     }
 }

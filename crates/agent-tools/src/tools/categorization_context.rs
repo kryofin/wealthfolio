@@ -889,7 +889,7 @@ mod tests {
             splits: Vec::new(),
             event_id: None,
             transfer_link_status: None,
-            converted_amount: None,
+            cash_movement: None,
         }
     }
 

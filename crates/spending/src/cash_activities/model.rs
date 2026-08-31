@@ -142,13 +142,14 @@ pub struct CashActivity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transfer_link_status: Option<TransferLinkStatus>,
-    /// `|amount|` converted to the caller's base currency at this activity's
-    /// own date, so clients can sum rows across currencies. Magnitude only —
-    /// the display sign comes from `cash_flow_bucket`. `None` when the caller
-    /// did not ask for conversion.
+    /// Signed cash movement for this row, converted to the caller's base
+    /// currency at the activity's own date: positive when money entered the
+    /// account, negative when it left. Computed by the same resolver that
+    /// builds account balances, so clients sum these directly instead of
+    /// re-deriving a sign. `None` when the caller did not ask for conversion.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub converted_amount: Option<f64>,
+    pub cash_movement: Option<f64>,
 }
 
 /// Net balance over the FULL filtered set (not just the returned page),

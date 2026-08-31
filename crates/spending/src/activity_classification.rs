@@ -42,14 +42,6 @@ impl SpendingClassification {
             _ => Decimal::ZERO,
         }
     }
-
-    /// Signed contribution to a running balance, matching the sign each row
-    /// shows in the transactions table: income and refunds add, spending
-    /// outflows and savings transfers subtract, neutral rows contribute
-    /// nothing. `amount` is expected to be the absolute amount.
-    pub(crate) fn net_amount(self, amount: Decimal) -> Decimal {
-        self.income_amount(amount) - self.spending_amount(amount) - self.saving_amount(amount)
-    }
 }
 
 /// Source-group ids whose transfer has BOTH legs inside the spending-account
