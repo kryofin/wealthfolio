@@ -150,18 +150,31 @@ pub struct CashActivity {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cash_movement: Option<f64>,
+    /// The same signed movement in the row's OWN currency, unconverted. Lets a
+    /// client total a single-currency selection exactly, with no FX rounding.
+    /// `None` when the caller did not ask for conversion.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cash_movement_native: Option<f64>,
 }
 
-/// Net balance over the FULL filtered set (not just the returned page),
-/// converted to the caller-provided base currency. Signed the way each row
-/// displays: income and refunds add, spending outflows and savings transfers
-/// subtract, neutral rows contribute nothing.
+/// Net cash movement over the FULL filtered set (not just the returned page).
+///
+/// When every matching row shares one currency the total is that currency's
+/// own, untouched by FX. Only a set spanning several currencies is converted to
+/// the base currency, and `converted` says which of the two happened so the UI
+/// can disclose it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FilteredBalance {
     pub amount: f64,
-    /// Currency the balance is denominated in (the base currency).
+    /// Currency the balance is denominated in: the currency shared by every
+    /// matching row, or the base currency when they differ.
     pub currency: String,
+    /// True when the set spanned more than one currency and the total had to be
+    /// FX-converted. The UI discloses this, because the rows the reader can see
+    /// may all share a currency while an unloaded row does not.
+    pub converted: bool,
 }
 
 /// Paginated response for cash-activity search.

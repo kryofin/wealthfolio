@@ -201,6 +201,7 @@
     "countZero": "取引0件",
     "selectedBalance": "選択中の残高:",
     "filteredBalance": "絞り込み後の残高:",
+    "balanceConverted": "{{currency}}に換算 — このフィルターは複数の通貨にまたがっています。",
     "category": "カテゴリ",
     "subcategory": "サブカテゴリ",
     "event": "イベント",

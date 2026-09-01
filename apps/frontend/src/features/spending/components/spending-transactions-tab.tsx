@@ -519,11 +519,13 @@ export const SpendingTransactionsTab = forwardRef<SpendingTransactionsTabHandle>
 
     // Net of the checked rows. Selection is limited to loaded rows, so this
     // needs no extra round-trip.
-    const selectedBalance = useMemo(() => {
-      const amount = computeSelectedBalance(rows, selectedRowIds);
-      if (amount === null) return null;
-      return { amount, currency: filteredBalance?.currency ?? settings?.baseCurrency ?? "USD" };
-    }, [rows, selectedRowIds, filteredBalance, settings?.baseCurrency]);
+    // Deliberately does NOT inherit the filtered pill's currency: a selection
+    // can be single-currency while the wider filter spans several, and each
+    // pill should say what it actually measured.
+    const selectedBalance = useMemo(
+      () => computeSelectedBalance(rows, selectedRowIds, settings?.baseCurrency ?? "USD"),
+      [rows, selectedRowIds, settings?.baseCurrency],
+    );
 
     const filtersActive =
       !!debouncedSearch ||

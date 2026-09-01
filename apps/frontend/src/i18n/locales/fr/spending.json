@@ -210,6 +210,7 @@
     "countZero": "0 transaction",
     "selectedBalance": "Solde sélectionné :",
     "filteredBalance": "Solde filtré :",
+    "balanceConverted": "Converti en {{currency}} — ce filtre couvre plusieurs devises.",
     "category": "Catégorie",
     "subcategory": "Sous-catégorie",
     "event": "Événement",

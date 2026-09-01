@@ -113,23 +113,47 @@ export function getTransactionDisplay(
  * Net cash movement of the selected rows: positive when money entered the
  * accounts, negative when it left. Returns `null` when nothing is selected.
  *
- * The per-row signed amount is computed server-side (`cashMovement`, in the base
- * currency) by the same resolver that builds account balances, so this is a plain
- * sum — deliberately not re-derived from `getTransactionDisplay`, which drives row
- * colour and the +/- glyph and would drift from the server's rule. Rows missing a
- * `cashMovement` (the server was not asked to convert) contribute nothing.
+ * Mirrors the rule the server applies to the filtered balance. When every
+ * selected row that moves cash shares a currency, the total is that currency's
+ * own and no FX is involved; only a mixed selection converts to `baseCurrency`,
+ * and `converted` reports which happened so the UI can disclose it.
  *
- * Note this is not the same question the row signs answer: transfers count by
- * direction here, while the table still renders them unsigned as neutral.
+ * Rows contributing nothing are ignored when deciding the currency — they can't
+ * change the total, so letting one force a conversion would lose precision for
+ * no reason. The per-row amounts are computed server-side by the same resolver
+ * that builds account balances; a row the server did not convert contributes 0.
  */
 export function computeSelectedBalance(
   rows: TransactionRowVM[],
   selectedRowIds: Set<string>,
-): number | null {
+  baseCurrency: string,
+): { amount: number; currency: string; converted: boolean } | null {
   if (selectedRowIds.size === 0) return null;
-  return rows
-    .filter((row) => selectedRowIds.has(row.activity.id))
-    .reduce((sum, row) => sum + (row.activity.cashMovement ?? 0), 0);
+  const selected = rows.filter((row) => selectedRowIds.has(row.activity.id));
+
+  let sole: string | null = null;
+  let mixed = false;
+  for (const { activity } of selected) {
+    if (!activity.cashMovementNative) continue;
+    if (sole === null) sole = activity.currency;
+    else if (sole !== activity.currency) {
+      mixed = true;
+      break;
+    }
+  }
+
+  if (sole !== null && !mixed) {
+    return {
+      amount: selected.reduce((sum, row) => sum + (row.activity.cashMovementNative ?? 0), 0),
+      currency: sole,
+      converted: false,
+    };
+  }
+  return {
+    amount: selected.reduce((sum, row) => sum + (row.activity.cashMovement ?? 0), 0),
+    currency: baseCurrency,
+    converted: mixed,
+  };
 }
 
 export function toRowVM(

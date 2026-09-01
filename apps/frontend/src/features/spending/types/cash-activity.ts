@@ -88,12 +88,27 @@ export interface CashActivity extends Activity {
    * re-deriving a sign from `cashFlowBucket`.
    */
   cashMovement?: number;
+  /**
+   * The same signed movement in the row's own currency, unconverted. Lets a
+   * single-currency selection total exactly, with no FX rounding.
+   */
+  cashMovementNative?: number;
 }
 
 /** Net balance over the full filtered set, in the base currency. */
 export interface FilteredBalance {
   amount: number;
+  /**
+   * The currency shared by every matching row, or the base currency when they
+   * differ.
+   */
   currency: string;
+  /**
+   * True when the set spanned more than one currency and had to be FX-converted.
+   * Disclosed in the UI, because the visible rows may all share a currency while
+   * an unloaded one does not.
+   */
+  converted: boolean;
 }
 
 export interface CashActivitySearchResponse {

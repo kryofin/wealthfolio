@@ -592,6 +592,7 @@ fn fixture_cash_activity(
         event_id: None,
         transfer_link_status: None,
         cash_movement: None,
+        cash_movement_native: None,
     }
 }
 

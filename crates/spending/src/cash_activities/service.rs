@@ -162,6 +162,7 @@ impl CashActivityService {
                     event_id,
                     transfer_link_status,
                     cash_movement: None,
+                    cash_movement_native: None,
                 }
             })
             .collect();
@@ -409,14 +410,32 @@ impl CashActivityService {
         // it covers every matching row, not just the returned page. Only the
         // first page carries it: page 1 is refetched on every filter change, so
         // later pages can skip the recomputation.
+        // When every matching row shares a currency, total in that currency and
+        // skip FX entirely — a single-currency account then reads exactly, with
+        // none of the per-activity-rate drift that converting would introduce.
+        // Only a genuinely mixed set falls back to the base currency.
         let filtered_balance = (req.offset == 0 && !base_currency.is_empty()).then(|| {
-            let amount = activities
-                .iter()
-                .map(|a| self.cash_movement(a, &account_types, base_currency))
-                .sum();
-            FilteredBalance {
-                amount: decimal_to_f64(amount),
-                currency: base_currency.to_string(),
+            match self.sole_currency(&activities, &account_types) {
+                Some(currency) => FilteredBalance {
+                    amount: decimal_to_f64(
+                        activities
+                            .iter()
+                            .map(|a| self.native_cash_movement(a, &account_types))
+                            .sum(),
+                    ),
+                    currency: currency.to_string(),
+                    converted: false,
+                },
+                None => FilteredBalance {
+                    amount: decimal_to_f64(
+                        activities
+                            .iter()
+                            .map(|a| self.converted_cash_movement(a, &account_types, base_currency))
+                            .sum(),
+                    ),
+                    currency: base_currency.to_string(),
+                    converted: true,
+                },
             }
         });
 
@@ -445,8 +464,11 @@ impl CashActivityService {
                 let event_id = tag_map.remove(&a.id);
                 let cash_flow_bucket = cash_flow_bucket_for(&a, &account_types, &transfer_groups);
                 let transfer_link_status = transfer_link_status_for(&a, &transfer_link_resolution);
-                let cash_movement = (!base_currency.is_empty())
-                    .then(|| decimal_to_f64(self.cash_movement(&a, &account_types, base_currency)));
+                let cash_movement = (!base_currency.is_empty()).then(|| {
+                    decimal_to_f64(self.converted_cash_movement(&a, &account_types, base_currency))
+                });
+                let cash_movement_native = (!base_currency.is_empty())
+                    .then(|| decimal_to_f64(self.native_cash_movement(&a, &account_types)));
                 CashActivity {
                     activity: a,
                     cash_flow_bucket,
@@ -455,6 +477,7 @@ impl CashActivityService {
                     event_id,
                     transfer_link_status,
                     cash_movement,
+                    cash_movement_native,
                 }
             })
             .collect();
@@ -466,7 +489,7 @@ impl CashActivityService {
         })
     }
 
-    /// Signed cash movement of one activity in `target` currency: positive when
+    /// Signed cash movement of one activity in its OWN currency: positive when
     /// money entered the account, negative when it left.
     ///
     /// The sign and magnitude come from `ActivityEconomicsResolver`, the same
@@ -481,15 +504,11 @@ impl CashActivityService {
     /// account page.
     ///
     /// Unlike the spending buckets, transfers count by direction instead of
-    /// washing out: a Transfer-In filter totals inflow. The FX conversion is
-    /// applied to the *signed* effect, not to `|amount|`, because those two
-    /// differ for security transfers. Falls back to the native amount when no
-    /// rate is available, so a missing rate understates rather than drops a row.
-    fn cash_movement(
+    /// washing out: a Transfer-In filter totals inflow.
+    fn native_cash_movement(
         &self,
         activity: &Activity,
         account_types: &HashMap<String, String>,
-        target: &str,
     ) -> Decimal {
         if !activity.is_posted() {
             return Decimal::ZERO;
@@ -497,13 +516,26 @@ impl CashActivityService {
         let is_credit_card = account_types
             .get(&activity.account_id)
             .is_some_and(|account_type| account_type == account_types::CREDIT_CARD);
-        let native = ActivityEconomicsResolver::resolve_cash_with_account_context(
+        ActivityEconomicsResolver::resolve_cash_with_account_context(
             activity,
             Decimal::ONE,
             is_credit_card,
         )
         .signed_cash_effect
-        .unwrap_or(Decimal::ZERO);
+        .unwrap_or(Decimal::ZERO)
+    }
+
+    /// `native_cash_movement` converted into `target`. The conversion is applied
+    /// to the *signed* effect, not to `|amount|`, because those two differ for
+    /// security transfers. Falls back to the native amount when no rate is
+    /// available, so a missing rate understates rather than drops a row.
+    fn converted_cash_movement(
+        &self,
+        activity: &Activity,
+        account_types: &HashMap<String, String>,
+        target: &str,
+    ) -> Decimal {
+        let native = self.native_cash_movement(activity, account_types);
         fx_to_target(
             self.fx.as_ref(),
             native,
@@ -512,6 +544,32 @@ impl CashActivityService {
             activity.activity_date.date_naive(),
         )
         .unwrap_or(native)
+    }
+
+    /// The one currency shared by every row that actually moves cash, if there
+    /// is one.
+    ///
+    /// Rows contributing nothing (not posted, or no cash effect) are ignored:
+    /// they cannot change the total, so letting them force an FX conversion
+    /// would lose precision for no reason. `None` means the set spans several
+    /// currencies and has to be converted to the base currency.
+    fn sole_currency<'a>(
+        &self,
+        activities: &'a [Activity],
+        account_types: &HashMap<String, String>,
+    ) -> Option<&'a str> {
+        let mut sole: Option<&str> = None;
+        for activity in activities {
+            if self.native_cash_movement(activity, account_types) == Decimal::ZERO {
+                continue;
+            }
+            match sole {
+                None => sole = Some(&activity.currency),
+                Some(seen) if seen == activity.currency => {}
+                Some(_) => return None,
+            }
+        }
+        sole
     }
 
     /// Fetch explicit activity ids without applying the normal status/date/limit
@@ -571,6 +629,7 @@ impl CashActivityService {
                     event_id,
                     transfer_link_status,
                     cash_movement: None,
+                    cash_movement_native: None,
                 }
             })
             .collect())
@@ -2223,19 +2282,166 @@ mod tests {
         assert_eq!(response.filtered_balance.unwrap().amount, -50.0);
     }
 
+    /// A currency helper for the multi-currency cases below.
+    fn search_activity_in(id: &str, activity_type: &str, amount: i64, currency: &str) -> Activity {
+        let mut a = search_activity(id, activity_type, amount);
+        a.currency = currency.to_string();
+        a
+    }
+
+    /// The reported case: one account in a currency that is not the base one.
+    /// Converting would drift by the FX rate, so a single-currency set is
+    /// totalled in its own currency and left alone.
     #[tokio::test]
-    async fn filtered_balance_and_row_amounts_convert_to_the_base_currency() {
+    async fn a_single_currency_set_totals_in_that_currency_without_converting() {
         let service = make_search_service(
-            vec![search_activity("spend", "WITHDRAWAL", 40)],
+            vec![search_activity_in("spend", "WITHDRAWAL", 40, "USD")],
+            fixed_rate_fx(Decimal::new(2, 0)),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "EUR").await.unwrap();
+        let balance = response.filtered_balance.unwrap();
+
+        assert_eq!(balance.amount, -40.0);
+        assert_eq!(balance.currency, "USD");
+        assert!(!balance.converted);
+    }
+
+    /// Same shape, but the shared currency IS the base currency.
+    #[tokio::test]
+    async fn a_set_already_in_the_base_currency_is_not_marked_converted() {
+        let service = make_search_service(
+            vec![search_activity_in("spend", "WITHDRAWAL", 40, "EUR")],
+            fixed_rate_fx(Decimal::new(2, 0)),
+            account_types::CASH,
+        );
+
+        let balance = service
+            .search(search_request(), "EUR")
+            .await
+            .unwrap()
+            .filtered_balance
+            .unwrap();
+
+        assert_eq!(balance.amount, -40.0);
+        assert_eq!(balance.currency, "EUR");
+        assert!(!balance.converted);
+    }
+
+    /// Several currencies leave no honest choice but the base currency.
+    #[tokio::test]
+    async fn a_mixed_currency_set_converts_to_the_base_currency() {
+        let service = make_search_service(
+            vec![
+                search_activity_in("usd", "WITHDRAWAL", 40, "USD"),
+                search_activity_in("gbp", "WITHDRAWAL", 10, "GBP"),
+            ],
+            fixed_rate_fx(Decimal::new(2, 0)),
+            account_types::CASH,
+        );
+
+        let response = service.search(search_request(), "EUR").await.unwrap();
+        let balance = response.filtered_balance.unwrap();
+
+        // Both rows convert at the stubbed 2x rate: -(40*2) + -(10*2).
+        assert_eq!(balance.amount, -100.0);
+        assert_eq!(balance.currency, "EUR");
+        assert!(balance.converted);
+    }
+
+    /// Rows are always given both amounts, so a client can total either way.
+    #[tokio::test]
+    async fn rows_carry_both_the_native_and_the_converted_movement() {
+        let service = make_search_service(
+            vec![search_activity_in("spend", "WITHDRAWAL", 40, "USD")],
             fixed_rate_fx(Decimal::new(2, 0)),
             account_types::CASH,
         );
 
         let response = service.search(search_request(), "EUR").await.unwrap();
 
-        assert_eq!(response.filtered_balance.unwrap().amount, -80.0);
-        // Rows carry the converted magnitude; the sign stays with the bucket.
+        assert_eq!(response.items[0].cash_movement_native, Some(-40.0));
         assert_eq!(response.items[0].cash_movement, Some(-80.0));
+    }
+
+    /// A row that moves no cash must not drag a single-currency set into a
+    /// conversion it does not need — it cannot change the total either way.
+    #[tokio::test]
+    async fn a_zero_movement_row_in_another_currency_does_not_force_conversion() {
+        let mut draft = search_activity_in("draft", "DEPOSIT", 500, "GBP");
+        draft.status = ActivityStatus::Draft;
+
+        let service = make_search_service(
+            vec![search_activity_in("spend", "WITHDRAWAL", 40, "USD"), draft],
+            fixed_rate_fx(Decimal::new(2, 0)),
+            account_types::CASH,
+        );
+
+        let balance = service
+            .search(search_request(), "EUR")
+            .await
+            .unwrap()
+            .filtered_balance
+            .unwrap();
+
+        assert_eq!(balance.amount, -40.0);
+        assert_eq!(balance.currency, "USD");
+        assert!(!balance.converted);
+    }
+
+    /// The currency is decided over the WHOLE filtered set, not the page, so a
+    /// second currency beyond the page limit still forces the conversion.
+    #[tokio::test]
+    async fn a_currency_beyond_the_page_limit_still_forces_conversion() {
+        let mut activities: Vec<Activity> = (0..3)
+            .map(|i| search_activity_in(&format!("usd-{i}"), "WITHDRAWAL", 10, "USD"))
+            .collect();
+        activities.push(search_activity_in("gbp", "WITHDRAWAL", 10, "GBP"));
+
+        let service =
+            make_search_service(activities, fixed_rate_fx(Decimal::ONE), account_types::CASH);
+
+        let response = service
+            .search(
+                CashActivitySearchRequest {
+                    limit: 2,
+                    ..search_request()
+                },
+                "EUR",
+            )
+            .await
+            .unwrap();
+        let balance = response.filtered_balance.unwrap();
+
+        assert_eq!(response.items.len(), 2);
+        assert_eq!(balance.currency, "EUR");
+        assert!(balance.converted);
+        assert_eq!(balance.amount, -40.0);
+    }
+
+    /// Mixed currencies that happen to cancel still report as converted — the
+    /// disclosure is about how the total was reached, not whether it is zero.
+    #[tokio::test]
+    async fn a_mixed_set_that_nets_to_zero_is_still_marked_converted() {
+        let service = make_search_service(
+            vec![
+                search_activity_in("in", "DEPOSIT", 50, "USD"),
+                search_activity_in("out", "WITHDRAWAL", 50, "GBP"),
+            ],
+            fixed_rate_fx(Decimal::ONE),
+            account_types::CASH,
+        );
+
+        let balance = service
+            .search(search_request(), "EUR")
+            .await
+            .unwrap()
+            .filtered_balance
+            .unwrap();
+
+        assert_eq!(balance.amount, 0.0);
+        assert!(balance.converted);
     }
 
     #[tokio::test]

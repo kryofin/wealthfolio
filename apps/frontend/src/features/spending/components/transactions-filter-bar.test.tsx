@@ -25,6 +25,10 @@ vi.mock("@wealthfolio/ui", () => ({
   SheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   SheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Tooltip: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  TooltipContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  TooltipProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  TooltipTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 vi.mock("./amount-range-filter", () => ({
@@ -81,8 +85,8 @@ function renderFilterBar({
   );
 }
 
-const selected: FilteredBalance = { amount: -120, currency: "USD" };
-const filtered: FilteredBalance = { amount: 400, currency: "USD" };
+const selected: FilteredBalance = { amount: -120, currency: "USD", converted: false };
+const filtered: FilteredBalance = { amount: 400, currency: "USD", converted: false };
 
 describe("TransactionsFilterBar balance pills", () => {
   it("shows the selected balance whenever rows are selected", () => {
@@ -118,6 +122,38 @@ describe("TransactionsFilterBar balance pills", () => {
 
     expect(screen.queryByTestId("selected-balance")).not.toBeInTheDocument();
     expect(screen.queryByTestId("filtered-balance")).not.toBeInTheDocument();
+  });
+
+  // The rows on screen can all share a currency while an unloaded one does not,
+  // so a converted total says so rather than looking arbitrary.
+  it("marks a converted balance so the UI can disclose it", () => {
+    renderFilterBar({
+      filteredBalance: { amount: 400, currency: "EUR", converted: true },
+      filtersActive: true,
+    });
+
+    expect(screen.getByTestId("filtered-balance-converted")).toBeInTheDocument();
+  });
+
+  it("does not disclose anything when the balance was not converted", () => {
+    renderFilterBar({ filteredBalance: filtered, filtersActive: true });
+
+    expect(screen.queryByTestId("filtered-balance-converted")).not.toBeInTheDocument();
+  });
+
+  // Selection is a subset of the filter, so this is the only way the two pills
+  // can disagree: a single-currency selection inside a mixed filter.
+  it("lets the two pills show different currencies", () => {
+    renderFilterBar({
+      selectedBalance: { amount: -50, currency: "USD", converted: false },
+      filteredBalance: { amount: 400, currency: "EUR", converted: true },
+      filtersActive: true,
+    });
+
+    expect(screen.getByTestId("selected-balance")).toHaveTextContent("USD -50");
+    expect(screen.getByTestId("filtered-balance")).toHaveTextContent("EUR 400");
+    expect(screen.queryByTestId("selected-balance-converted")).not.toBeInTheDocument();
+    expect(screen.getByTestId("filtered-balance-converted")).toBeInTheDocument();
   });
 
   it("shows the filtered balance only while a filter is active", () => {

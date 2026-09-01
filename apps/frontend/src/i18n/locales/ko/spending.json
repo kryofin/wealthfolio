@@ -201,6 +201,7 @@
     "countZero": "거래 0건",
     "selectedBalance": "선택 잔액:",
     "filteredBalance": "필터 잔액:",
+    "balanceConverted": "{{currency}}(으)로 환산 — 이 필터에는 두 가지 이상의 통화가 포함되어 있습니다.",
     "category": "카테고리",
     "subcategory": "하위 카테고리",
     "event": "이벤트",

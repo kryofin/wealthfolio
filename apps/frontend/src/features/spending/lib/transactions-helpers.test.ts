@@ -111,9 +111,19 @@ describe("spending transaction helpers", () => {
 });
 
 describe("computeSelectedBalance", () => {
-  function row(id: string, cashMovement: number | undefined): TransactionRowVM {
+  function row(
+    id: string,
+    native: number | undefined,
+    currency = "USD",
+    converted = native,
+  ): TransactionRowVM {
     return {
-      activity: cashActivity({ id, cashMovement }),
+      activity: cashActivity({
+        id,
+        currency,
+        cashMovementNative: native,
+        cashMovement: converted,
+      }),
       category: null,
       splitCount: 0,
       needsReview: false,
@@ -129,9 +139,11 @@ describe("computeSelectedBalance", () => {
 
   const all = [income, outflow, refund, transferIn, transferOut];
   const idsOf = (...rows: TransactionRowVM[]) => new Set(rows.map((r) => r.activity.id));
+  const balance = (rows: TransactionRowVM[], ids: Set<string>, base = "EUR") =>
+    computeSelectedBalance(rows, ids, base);
 
   it("returns null when nothing is selected", () => {
-    expect(computeSelectedBalance(all, new Set())).toBeNull();
+    expect(balance(all, new Set())).toBeNull();
   });
 
   it.each([
@@ -141,30 +153,96 @@ describe("computeSelectedBalance", () => {
     ["transfers in add", transferIn, 900],
     ["transfers out subtract", transferOut, -900],
   ])("%s", (_label, selectedRow, expected) => {
-    expect(computeSelectedBalance(all, idsOf(selectedRow))).toBe(expected);
+    expect(balance(all, idsOf(selectedRow))?.amount).toBe(expected);
   });
 
   it("nets a mixed selection", () => {
     // 1000 - 400 + 150 + 900 - 900
-    expect(computeSelectedBalance(all, idsOf(...all))).toBe(750);
+    expect(balance(all, idsOf(...all))?.amount).toBe(750);
   });
 
   it("counts only the selected rows", () => {
-    expect(computeSelectedBalance(all, idsOf(income, outflow))).toBe(600);
+    expect(balance(all, idsOf(income, outflow))?.amount).toBe(600);
   });
 
   // Both legs of an internal move cancel — the money never left the accounts.
   it("nets a transfer pair to zero", () => {
-    expect(computeSelectedBalance(all, idsOf(transferIn, transferOut))).toBe(0);
-  });
-
-  it("ignores rows the server did not convert", () => {
-    const unconverted = row("unconverted", undefined);
-    expect(computeSelectedBalance([unconverted], idsOf(unconverted))).toBe(0);
+    expect(balance(all, idsOf(transferIn, transferOut))?.amount).toBe(0);
   });
 
   it("ignores ids that are not among the loaded rows", () => {
-    expect(computeSelectedBalance(all, new Set(["not-loaded"]))).toBe(0);
+    expect(balance(all, new Set(["not-loaded"]))?.amount).toBe(0);
+  });
+
+  describe("currency", () => {
+    it("reports a single-currency selection in its own currency, unconverted", () => {
+      const usd = [row("a", -40, "USD", -80), row("b", -10, "USD", -20)];
+
+      expect(balance(usd, idsOf(...usd))).toEqual({
+        amount: -50,
+        currency: "USD",
+        converted: false,
+      });
+    });
+
+    it("converts a selection spanning currencies to the base currency", () => {
+      const mixed = [row("usd", -40, "USD", -80), row("gbp", -10, "GBP", -20)];
+
+      expect(balance(mixed, idsOf(...mixed))).toEqual({
+        amount: -100,
+        currency: "EUR",
+        converted: true,
+      });
+    });
+
+    it("does not mark a selection already in the base currency as converted", () => {
+      const eur = [row("a", -40, "EUR", -40)];
+
+      expect(balance(eur, idsOf(...eur))).toEqual({
+        amount: -40,
+        currency: "EUR",
+        converted: false,
+      });
+    });
+
+    // A row that moves nothing cannot change the total, so it must not drag a
+    // single-currency selection into a conversion it does not need.
+    it("ignores zero-movement rows when deciding the currency", () => {
+      const rows = [row("spend", -40, "USD", -80), row("draft", 0, "GBP", 0)];
+
+      expect(balance(rows, idsOf(...rows))).toEqual({
+        amount: -40,
+        currency: "USD",
+        converted: false,
+      });
+    });
+
+    it("treats a row the server did not convert as contributing nothing", () => {
+      const rows = [row("unconverted", undefined, "USD", undefined)];
+
+      expect(balance(rows, idsOf(...rows))).toEqual({
+        amount: 0,
+        currency: "EUR",
+        converted: false,
+      });
+    });
+
+    // Selection is always a subset of the filtered set, so the two pills can
+    // differ only this way round: a single-currency selection inside a wider
+    // multi-currency filter. Each pill reports what it actually measured.
+    it("stays in its own currency even when the wider filter is mixed", () => {
+      const loaded = [
+        row("usd-1", -40, "USD", -80),
+        row("usd-2", -10, "USD", -20),
+        row("gbp", -5, "GBP", -10),
+      ];
+
+      expect(balance(loaded, idsOf(loaded[0], loaded[1]))).toEqual({
+        amount: -50,
+        currency: "USD",
+        converted: false,
+      });
+    });
   });
 });
 

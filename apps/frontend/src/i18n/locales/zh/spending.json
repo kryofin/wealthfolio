@@ -201,6 +201,7 @@
     "countZero": "0 笔交易",
     "selectedBalance": "已选余额：",
     "filteredBalance": "筛选余额：",
+    "balanceConverted": "已换算为 {{currency}} — 此筛选包含多种货币。",
     "category": "类别",
     "subcategory": "子类别",
     "event": "事件",

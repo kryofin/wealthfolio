@@ -14,6 +14,10 @@ import {
   SheetFooter,
   SheetHeader,
   SheetTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   PrivacyAmount,
 } from "@wealthfolio/ui";
 
@@ -303,17 +307,43 @@ function BalancePill({
   balance: FilteredBalance;
   testId: string;
 }) {
+  const { t } = useTranslation();
+  const amount = (
+    <PrivacyAmount
+      className="text-foreground font-medium"
+      value={balance.amount}
+      currency={balance.currency}
+    />
+  );
+
   return (
     <span
       className="bg-muted/60 text-muted-foreground inline-flex items-center gap-1 rounded px-1.5 py-0.5"
       data-testid={testId}
     >
       {label}
-      <PrivacyAmount
-        className="text-foreground font-medium"
-        value={balance.amount}
-        currency={balance.currency}
-      />
+      {balance.converted ? (
+        // Say so when the total was converted. The rows on screen can all share
+        // a currency while an unloaded one does not, so without this the base
+        // currency looks arbitrary.
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="decoration-muted-foreground/50 cursor-default underline decoration-dotted underline-offset-2"
+                data-testid={`${testId}-converted`}
+              >
+                {amount}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>{t("spending:filters.balanceConverted", { currency: balance.currency })}</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      ) : (
+        amount
+      )}
     </span>
   );
 }

@@ -203,6 +203,7 @@
     "countZero": "0 transactions",
     "selectedBalance": "Selected balance:",
     "filteredBalance": "Filtered balance:",
+    "balanceConverted": "Converted to {{currency}} — this filter spans more than one currency.",
     "category": "Category",
     "subcategory": "Subcategory",
     "event": "Event",
