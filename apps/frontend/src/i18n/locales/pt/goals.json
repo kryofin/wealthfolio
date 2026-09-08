@@ -932,5 +932,12 @@
         "description": "Uma queda de mercado de 30% é modelada no primeiro ano de aposentadoria."
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "Sem categoria",
+    "title": "Gastos na aposentadoria",
+    "hint": "Preenchido com seus gastos: {{amount}}/mês, média dos últimos {{months}} meses. Ajuste a qualquer momento no plano.",
+    "use_template": "Usar os valores do modelo",
+    "prefill_button": "Preencher a partir dos gastos ({{amount}}/mês)"
   }
 }

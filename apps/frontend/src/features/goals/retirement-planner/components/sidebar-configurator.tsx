@@ -2,6 +2,7 @@ import { useSettingsContext } from "@/lib/settings-provider";
 import { formatZonedDateKey } from "@/features/spending/lib/timezone";
 import { parseLocalDate } from "@/lib/utils";
 import { GoalFundingEditor } from "@/features/goals/components/goal-funding-editor";
+import { useSpendingSeed } from "@/features/goals/hooks/use-spending-seed";
 import {
   DEFAULT_RETURN_SLIDER_MAX,
   RATE_SLIDER_INCREMENT,
@@ -413,6 +414,7 @@ export function SidebarConfigurator({
   const numberFormatting = useNumberFormatting();
 
   const { t } = useTranslation();
+  const { seed: spendingSeed } = useSpendingSeed();
   const [draft, setDraft] = useState<RetirementPlan>(() => structuredClone(plan));
   const [draftMode, setDraftMode] = useState<PlannerMode>(plannerMode);
   const [dirty, setDirty] = useState(false);
@@ -498,6 +500,12 @@ export function SidebarConfigurator({
       expenses: { items: expenseItems(d.expenses).filter((item) => item.id !== id) },
     }));
     setExpandedExpenseId((current) => (current === id ? null : current));
+  };
+
+  const prefillExpensesFromSpending = () => {
+    if (!spendingSeed) return;
+    update((d) => ({ ...d, expenses: { items: spendingSeed.items } }));
+    setExpandedExpenseId(null);
   };
 
   const addStream = (preset?: Partial<RetirementIncomeStream>) => {
@@ -1071,6 +1079,17 @@ export function SidebarConfigurator({
               >
                 {t("goals:sidebar.spending.add_other")}
               </button>
+              {spendingSeed && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground col-span-2 rounded-md border py-1.5 text-xs transition-colors"
+                  onClick={prefillExpensesFromSpending}
+                >
+                  {t("goals:spending_seed.prefill_button", {
+                    amount: amountFormatting.formatAmount(spendingSeed.monthlyTotal, currency),
+                  })}
+                </button>
+              )}
             </div>
           </div>
         }
