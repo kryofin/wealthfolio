@@ -921,5 +921,12 @@
         "description": "Im ersten Ruhestandsjahr wird ein Marktrückgang von 30 % modelliert."
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "Nicht kategorisiert",
+    "title": "Ausgaben im Ruhestand",
+    "hint": "Vorausgefüllt aus Ihren Ausgaben: {{amount}}/Monat, Durchschnitt der letzten {{months}} Monate. Jederzeit im Plan anpassbar.",
+    "use_template": "Stattdessen Vorlagenbeträge verwenden",
+    "prefill_button": "Aus Ausgaben übernehmen ({{amount}}/Monat)"
   }
 }
