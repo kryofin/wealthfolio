@@ -932,5 +932,12 @@
         "description": "Une baisse de marché de 30 % est modélisée la première année de retraite."
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "Non catégorisé",
+    "title": "Dépenses à la retraite",
+    "hint": "Prérempli à partir de vos dépenses : {{amount}}/mois, moyenne des {{months}} derniers mois. Modifiable à tout moment dans le plan.",
+    "use_template": "Utiliser les montants du modèle",
+    "prefill_button": "Préremplir depuis les dépenses ({{amount}}/mois)"
   }
 }

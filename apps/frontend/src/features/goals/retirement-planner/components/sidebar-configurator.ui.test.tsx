@@ -6,6 +6,10 @@ import { DEFAULT_RETIREMENT_PLAN } from "../lib/plan-adapter";
 import type { RetirementPlan } from "../types";
 import { SidebarConfigurator } from "./sidebar-configurator";
 
+vi.mock("@/features/goals/hooks/use-spending-seed", () => ({
+  useSpendingSeed: () => ({ seed: null }),
+}));
+
 function renderConfigurator(plan: RetirementPlan, onSavePlan: (plan: RetirementPlan) => void) {
   render(
     <FormattingProvider locale="en-US">
