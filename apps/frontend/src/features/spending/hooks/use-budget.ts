@@ -24,10 +24,11 @@ import type {
   UpdateBudgetGroup,
 } from "../types/budget";
 
-export function useBudget(periodKey?: string) {
+export function useBudget(periodKey?: string, enabled = true) {
   return useQuery({
     queryKey: [QueryKeys.SPENDING_BUDGET, periodKey ?? null],
     queryFn: () => getBudget(periodKey),
+    enabled,
   });
 }
 

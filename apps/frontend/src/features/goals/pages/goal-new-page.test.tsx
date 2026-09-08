@@ -22,6 +22,7 @@ vi.mock("../hooks/use-create-goal-flow", () => ({
   useCreateGoalFlow: () =>
     mocks.useCreateGoalFlow?.() ?? { mutate: mocks.mutate, isPending: false },
 }));
+vi.mock("../hooks/use-spending-seed", () => ({ useSpendingSeed: () => ({ seed: null }) }));
 
 afterEach(() => {
   vi.useRealTimers();

@@ -971,5 +971,12 @@
     "spending_covered": "الإنفاق المغطّى:",
     "unfunded_spending_yr": "الإنفاق غير المموّل سنويًا:",
     "withdrawal_taxes_yr": "ضرائب السحب سنويًا:"
+  },
+  "spending_seed": {
+    "uncategorized_label": "غير مصنّف",
+    "title": "الإنفاق في التقاعد",
+    "hint": "مُعبّأ مسبقًا من إنفاقك: {{amount}} شهريًا، بمتوسط آخر {{months}} شهرًا. يمكنك تعديله في أي وقت من الخطة.",
+    "use_template": "استخدام مبالغ القالب بدلًا من ذلك",
+    "prefill_button": "تعبئة من الإنفاق ({{amount}} شهريًا)"
   }
 }
