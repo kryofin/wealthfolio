@@ -932,5 +932,12 @@
         "description": "Se modela una caída del mercado del 30% en el primer año de jubilación."
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "Sin categoría",
+    "title": "Gastos en la jubilación",
+    "hint": "Prellenado con tus gastos: {{amount}}/mes, promedio de los últimos {{months}} meses. Puedes ajustarlo en el plan.",
+    "use_template": "Usar los importes de la plantilla",
+    "prefill_button": "Prellenar desde gastos ({{amount}}/mes)"
   }
 }
