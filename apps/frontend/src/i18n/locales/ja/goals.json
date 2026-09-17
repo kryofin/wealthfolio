@@ -918,5 +918,12 @@
         "description": "退職1年目に市場が30%下落するモデルです。"
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "未分類",
+    "title": "退職後の支出",
+    "hint": "支出履歴から自動入力: 過去{{months}}か月の平均 {{amount}}/月。プランでいつでも調整できます。",
+    "use_template": "テンプレートの金額を使う",
+    "prefill_button": "支出から自動入力 ({{amount}}/月)"
   }
 }
