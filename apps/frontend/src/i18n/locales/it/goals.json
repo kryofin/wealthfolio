@@ -932,5 +932,12 @@
         "description": "Si modella un calo del mercato del 30% nel primo anno di pensionamento."
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "Senza categoria",
+    "title": "Spese in pensione",
+    "hint": "Precompilato dalle tue spese: {{amount}}/mese, media degli ultimi {{months}} mesi. Modificabile in qualsiasi momento dal piano.",
+    "use_template": "Usa gli importi del modello",
+    "prefill_button": "Precompila dalle spese ({{amount}}/mese)"
   }
 }
