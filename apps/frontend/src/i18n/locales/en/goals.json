@@ -921,5 +921,12 @@
         "description": "A 30% market drop is modeled in the first retirement year."
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "Uncategorized",
+    "title": "Retirement spending",
+    "hint": "Prefilled from your spending: {{amount}}/mo, averaged over the last {{months}} months. Adjust it any time from the plan.",
+    "use_template": "Use template amounts instead",
+    "prefill_button": "Prefill from spending ({{amount}}/mo)"
   }
 }

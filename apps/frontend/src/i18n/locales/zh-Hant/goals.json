@@ -921,5 +921,12 @@
         "description": "模型假設退休第一年市場下跌30%。"
       }
     }
+  },
+  "spending_seed": {
+    "uncategorized_label": "未分類",
+    "title": "退休支出",
+    "hint": "已依您的支出預填：最近 {{months}} 個月平均 {{amount}}/月。可隨時在計畫中調整。",
+    "use_template": "改用範本金額",
+    "prefill_button": "從支出預填 ({{amount}}/月)"
   }
 }
