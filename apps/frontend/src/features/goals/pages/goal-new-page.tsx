@@ -11,6 +11,7 @@ import {
   Page,
   PageContent,
   PageHeader,
+  useAmountFormatting,
 } from "@wealthfolio/ui";
 import {
   Card,
@@ -19,6 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@wealthfolio/ui/components/ui/card";
+import { Checkbox } from "@wealthfolio/ui/components/ui/checkbox";
 import { Icons } from "@wealthfolio/ui/components/ui/icons";
 import { Textarea } from "@wealthfolio/ui/components/ui/textarea";
 import { useEffect, useMemo, useState } from "react";
@@ -26,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useCreateGoalFlow } from "../hooks/use-create-goal-flow";
 import { useGoals } from "../hooks/use-goals";
+import { useSpendingSeed } from "../hooks/use-spending-seed";
 import { toast } from "sonner";
 import {
   DEFAULT_RETIREMENT_PLAN,
@@ -34,6 +37,7 @@ import {
   inferBirthYearMonthFromAge,
   normalizeRetirementPlan,
 } from "@/features/goals/retirement-planner/lib/plan-adapter";
+import { SPENDING_SEED_MONTHS } from "@/features/goals/retirement-planner/lib/spending-seed";
 
 const DEFAULT_RETIREMENT_CURRENT_AGE = 30;
 const DEFAULT_TRADITIONAL_RETIREMENT_AGE = 65;
@@ -68,6 +72,7 @@ export default function GoalNewPage() {
     DEFAULT_RETIREMENT_CURRENT_AGE,
     today,
   );
+  const amountFormatting = useAmountFormatting();
   const [selectedType, setSelectedType] = useState<GoalType | null>(null);
   const [plannerMode, setPlannerMode] = useState<PlannerMode>("traditional");
   const [title, setTitle] = useState("");
@@ -80,6 +85,7 @@ export default function GoalNewPage() {
   const [retirementTargetAge, setRetirementTargetAge] = useState(
     DEFAULT_TRADITIONAL_RETIREMENT_AGE,
   );
+  const [useTemplateSpending, setUseTemplateSpending] = useState(false);
 
   const goalTemplates = useMemo<GoalTemplate[]>(
     () => [
@@ -133,6 +139,7 @@ export default function GoalNewPage() {
   const retirementExists = hasRetirementGoal(goals);
   const template = goalTemplates.find((tmpl) => tmpl.type === selectedType);
   const isRetirement = selectedType === "retirement";
+  const { seed: spendingSeed } = useSpendingSeed(isRetirement);
   const baseCurrency = settings?.baseCurrency ?? "USD";
   const trimmedTitle = title.trim();
   const trimmedDescription = description.trim();
@@ -171,6 +178,7 @@ export default function GoalNewPage() {
     setTargetDate("");
     setRetirementBirthYearMonth(defaultRetirementBirthYearMonth);
     setRetirementTargetAge(DEFAULT_TRADITIONAL_RETIREMENT_AGE);
+    setUseTemplateSpending(false);
   };
 
   const handleCreate = () => {
@@ -194,6 +202,9 @@ export default function GoalNewPage() {
             normalizeRetirementPlan(
               {
                 ...createDefaultRetirementPlan(baseCurrency, today),
+                ...(spendingSeed && !useTemplateSpending
+                  ? { expenses: { items: spendingSeed.items } }
+                  : {}),
                 personal: {
                   ...DEFAULT_RETIREMENT_PLAN.personal,
                   birthYearMonth: retirementBirthYearMonthForCreate,
@@ -406,6 +417,29 @@ export default function GoalNewPage() {
                           }
                         />
                       </div>
+                      {spendingSeed && (
+                        <div className="bg-muted/30 space-y-2 rounded-lg border p-3">
+                          <p className="text-sm font-medium">{t("goals:spending_seed.title")}</p>
+                          <p className="text-muted-foreground text-xs">
+                            {t("goals:spending_seed.hint", {
+                              amount: amountFormatting.formatAmount(
+                                spendingSeed.monthlyTotal,
+                                baseCurrency,
+                              ),
+                              months: SPENDING_SEED_MONTHS,
+                            })}
+                          </p>
+                          <label className="flex cursor-pointer items-center gap-2 text-xs">
+                            <Checkbox
+                              checked={useTemplateSpending}
+                              onCheckedChange={(checked) =>
+                                setUseTemplateSpending(checked === true)
+                              }
+                            />
+                            {t("goals:spending_seed.use_template")}
+                          </label>
+                        </div>
+                      )}
                     </div>
                   )}
 
