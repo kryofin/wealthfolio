@@ -1,3 +1,4 @@
+import { PrivacyToggle } from "@/components/privacy-toggle";
 import { profilePreferenceKey, readProfilePreference } from "@/hooks/use-persistent-state";
 import { useHapticFeedback, useIsMobileViewport } from "@/hooks";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,8 @@ interface SwipablePageProps {
    * so navigating back to this page restores the previously chosen tab.
    */
   persistKey?: string;
+  /** Show the hide/show balances toggle right after the view navigation. */
+  showPrivacyToggle?: boolean;
 }
 
 // Navigation Pills Component - Segmented control style
@@ -166,6 +169,7 @@ export function SwipablePage({
   title,
   mobileActionsPlacement = "below",
   persistKey,
+  showPrivacyToggle = false,
 }: SwipablePageProps) {
   const isMobile = useIsMobileViewport();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -205,6 +209,9 @@ export function SwipablePage({
   const scrollCarouselRef = React.useRef<((index: number) => void) | null>(null);
   const currentActions = views.find((v) => v.value === shownView)?.actions;
   const mobileActionsInHeader = mobileActionsPlacement === "header";
+  const privacyToggle = showPrivacyToggle ? (
+    <PrivacyToggle className="bg-muted/60 hover:bg-muted" />
+  ) : null;
 
   const handleViewChange = React.useCallback(
     (nextView: string, haptic = true) => {
@@ -275,10 +282,11 @@ export function SwipablePage({
                   // min-w-max: as a mobile `.flex` it clips overflow, which would let its
                   // column shrink and hide the first action behind the pills.
                   <div className="flex min-w-max shrink-0 items-center justify-end gap-2">
+                    {privacyToggle}
                     {currentActions}
                   </div>
                 ) : (
-                  <div />
+                  <div className="flex items-center">{privacyToggle}</div>
                 )}
               </div>
               {currentActions && !mobileActionsInHeader && (
@@ -335,6 +343,7 @@ export function SwipablePage({
                   currentView={currentView}
                   onViewChange={handleViewChange}
                 />
+                {privacyToggle}
               </div>
               {/* Actions slot - renders current view's actions */}
               <div className="ms-auto flex max-w-full min-w-0 items-center gap-2">
